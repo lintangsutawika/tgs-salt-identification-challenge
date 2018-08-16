@@ -22,8 +22,9 @@ from skimage.morphology import label
 from sklearn.model_selection import train_test_split
 import tensorflow as tf
 
+import keras
 from keras.models import Model, load_model
-from keras.layers import Input, Conv2D, Conv2DTranspose, MaxPooling2D, Concatenate, Dropout, BatchNormalization, UpSampling2D
+from keras.layers import ZeroPadding2D, Activation, Input, Conv2D, Conv2DTranspose, MaxPooling2D, Concatenate, Dropout, BatchNormalization, UpSampling2D
 from keras.layers.merge import concatenate
 from keras.layers.core import Lambda, RepeatVector, Reshape
 from keras.layers.convolutional import Conv2D, Conv2DTranspose
@@ -79,13 +80,14 @@ train_df["depth"][0].shape
 train_df["images_d"] = [np.dstack((train_df["images"][i], train_df["depth"][i])) for i in tqdm(train_df.index)]
 train_df["images_d"][0].shape
 
-train_df["canny"] = [cv2.threshold(cv2.Canny(np.array(load_img(f'{imgs_train}/{idx}.png', color_mode="grayscale")),100,200),90,255,cv2.THRESH_BINARY)[1] /255 
+train_df["canny"] = [cv2.Canny(np.array(load_img(f'{imgs_train}/{idx}.png', color_mode="grayscale")),100,200) /255 
                         for idx in tqdm(train_df.index)]
 
-train_df["median"] = [cv2.threshold(cv2.medianBlur(np.array(load_img(f'{imgs_train}/{idx}.png', color_mode="grayscale")),5),90,255,cv2.THRESH_BINARY)[1] /255 
+train_df["median"] = [cv2.medianBlur(np.array(load_img(f'{imgs_train}/{idx}.png', color_mode="grayscale")),5) /255 
                         for idx in tqdm(train_df.index)]
 
 train_df["images_feat"] = [np.dstack((train_df["images"][i], train_df["canny"][i], train_df["median"][i], train_df["depth"][i])) for i in tqdm(train_df.index)]
+# train_df["images_feat"] = [train_df["images"][i] for i in tqdm(train_df.index)]
 train_df["images_feat"][0].shape
 
 def coverage(mask):
@@ -235,123 +237,585 @@ def dice_coef(y_true, y_pred):
     intersection = K.sum(y_true_f * y_pred_f)
     return (2. * intersection + K.epsilon()) / (K.sum(y_true_f) + K.sum(y_pred_f) + K.epsilon())
 
-def conv_block(m, ch_dim, acti, bn, res, do=0):
-    """CNN block"""
-    n = Conv2D(ch_dim, 3, activation=acti, padding='same')(m)
-    n = BatchNormalization()(n) if bn else n
-    n = Dropout(do)(n) if do else n
-    n = Conv2D(ch_dim, 3, activation=acti, padding='same')(n)
-    n = BatchNormalization()(n) if bn else n
-    return Concatenate()([m, n]) if res else n
+# def conv_block(m, ch_dim, acti, bn, res, do=0):
+#     """CNN block"""
+#     n = Conv2D(ch_dim, 3, activation=acti, padding='same')(m)
+#     n = BatchNormalization()(n) if bn else n
+#     n = Dropout(do)(n) if do else n
+#     n = Conv2D(ch_dim, 3, activation=acti, padding='same')(n)
+#     n = BatchNormalization()(n) if bn else n
+#     return Concatenate()([m, n]) if res else n
 
-def level_block(m, input_depth, ch_dim, depth, inc_rate, acti, do, bn, mp, up, res):
-    """Recursive CNN builder"""
-    if depth > 0:
-        n = conv_block(m, ch_dim, acti, bn, res) # no drop-out
-        m = MaxPooling2D()(n) if mp else Conv2D(ch_dim, 3, strides=2, padding='same')(n)
-        m = level_block(m, input_depth, int(inc_rate*ch_dim), depth-1, inc_rate, acti, do, bn, mp, up, res)
-        # Unwind recursive stack calls - with stack variables
-        if up:
-            # Repeat the rows and columns of the data by 2 and 2 respectively
-            m = UpSampling2D()(m)
-            m = Conv2D(ch_dim, 2, activation=acti, padding='same')(m)
-        else:
-            # Transposed convolutions are going in the opposite direction of a normal convolution
-            m = Conv2DTranspose(ch_dim, 3, strides=2, activation=acti, padding='same')(m)
-        n = Concatenate()([n, m])
-        m = conv_block(n, ch_dim, acti, bn, res)
-    else:
-        # Middle conv_block
-        m = conv_block(m, ch_dim, acti, bn, res, do)
-        # Concat depth information in the middle layer
-        m = Concatenate()([m, input_depth])
-    return m
+# def level_block(m, input_depth, ch_dim, depth, inc_rate, acti, do, bn, mp, up, res):
+#     """Recursive CNN builder"""
+#     if depth > 0:
+#         n = conv_block(m, ch_dim, acti, bn, res) # no drop-out
+#         m = MaxPooling2D()(n) if mp else Conv2D(ch_dim, 3, strides=2, padding='same')(n)
+#         m = level_block(m, input_depth, int(inc_rate*ch_dim), depth-1, inc_rate, acti, do, bn, mp, up, res)
+#         # Unwind recursive stack calls - with stack variables
+#         if up:
+#             # Repeat the rows and columns of the data by 2 and 2 respectively
+#             m = UpSampling2D()(m)
+#             m = Conv2D(ch_dim, 2, activation=acti, padding='same')(m)
+#         else:
+#             # Transposed convolutions are going in the opposite direction of a normal convolution
+#             m = Conv2DTranspose(ch_dim, 3, strides=2, activation=acti, padding='same')(m)
+#         n = Concatenate()([n, m])
+#         m = conv_block(n, ch_dim, acti, bn, res)
+#     else:
+#         # Middle conv_block
+#         m = conv_block(m, ch_dim, acti, bn, res, do)
+#         # Concat depth information in the middle layer
+#         m = Concatenate()([m, input_depth])
+#     return m
 
-def UNet(img_shape, out_ch=1, start_ch=64, depth=4, inc_rate=2., activation='relu', 
-        dropout=0.5, batchnorm=False, maxpool=True, upconv=False, residual=False):
-    """Returns model"""
+# def UNet(img_shape, out_ch=1, start_ch=64, depth=4, inc_rate=2., activation='relu', 
+#         dropout=0.5, batchnorm=False, maxpool=True, upconv=False, residual=False):
+#     """Returns model"""
+#     inputs = Input(shape=img_shape, name='img')
+#     # input_depth = Input(shape=(DPT_SIZE, DPT_SIZE, 1), name='depth')
+#     input_depth = Input(shape=(DPT_SIZE, DPT_SIZE, 1), name='depth')
+#     outputs = level_block(inputs, input_depth, start_ch, depth, inc_rate, activation, dropout, batchnorm, maxpool, upconv, residual)
+#     outputs = Conv2D(out_ch, 1, activation='sigmoid')(outputs)
+#     return Model(inputs=[inputs, input_depth], outputs=outputs)
+
+# def DecoderBlock(input_m, mid_ch, out_ch):
+#     """CNN block"""
+#     n = Conv2D(mid_ch, 3, activation='relu', padding='same')(input_m)
+#     n = Conv2DTranspose(out_ch, (3, 3), strides=(2, 2), padding='same', output_padding=1, activation='relu')(n)
+
+#     # n = UpSampling2D()(input_m)
+#     # n = Conv2D(out_ch, 2, activation='relu', padding='same')(n)
+#     return n
+
+def UNET_RESNET50(img_shape, num_filters=32, do=0.3, bn=1, deconv=False):
+    resnet = keras.applications.resnet50.ResNet50(include_top=True, weights='imagenet', input_tensor=None, 
+                                                    input_shape=None, pooling=None, classes=1000)
     inputs = Input(shape=img_shape, name='img')
-    # input_depth = Input(shape=(DPT_SIZE, DPT_SIZE, 1), name='depth')
-    input_depth = Input(shape=(DPT_SIZE, DPT_SIZE, 1), name='depth')
-    outputs = level_block(inputs, input_depth, start_ch, depth, inc_rate, activation, dropout, batchnorm, maxpool, upconv, residual)
-    outputs = Conv2D(out_ch, 1, activation='sigmoid')(outputs)
-    return Model(inputs=[inputs, input_depth], outputs=outputs)
+    ##################################################################################################
+    # Conv Block Layer 1
+    ##################################################################################################
+    x = resnet.get_layer('conv1_pad')(inputs)
+    x = resnet.get_layer('conv1')(x)
+    x = resnet.get_layer('bn_conv1')(x)
+    x = Activation('relu')(x)
+    conv1 = MaxPooling2D((3, 3), strides=(2, 2))(x) # 64
+    # max_pooling2d_1 = resnet.get_layer('max_pooling2d_1')(x)
+    ##################################################################################################
+    # Conv Block Layer 2
+    ##################################################################################################
+    x = resnet.get_layer('res2a_branch2a')(conv1)
+    x = resnet.get_layer('bn2a_branch2a')(x)
+    x = resnet.get_layer('activation_2')(x)
+    x = resnet.get_layer('res2a_branch2b')(x)
+    x = resnet.get_layer('bn2a_branch2b')(x)
+    x = resnet.get_layer('activation_3')(x)
+    res2a_branch2c = resnet.get_layer('res2a_branch2c')(x)
+    res2a_branch1 = resnet.get_layer('res2a_branch1')(conv1)
+    bn2a_branch2c = resnet.get_layer('bn2a_branch2c')(res2a_branch2c)
+    bn2a_branch1 = resnet.get_layer('bn2a_branch1')(res2a_branch1)
+    x = resnet.get_layer('add_1')([bn2a_branch2c, bn2a_branch1])
+    activation_4 = resnet.get_layer('activation_4')(x)
+    ##################################################################################################
+    # Identity Block Layer 2 A
+    ##################################################################################################
+    x = resnet.get_layer('res2b_branch2a')(activation_4)
+    x = resnet.get_layer('bn2b_branch2a')(x)
+    x = resnet.get_layer('activation_5')(x)
+    x = resnet.get_layer('res2b_branch2b')(x)
+    x = resnet.get_layer('bn2b_branch2b')(x)
+    x = resnet.get_layer('activation_6')(x)
+    x = resnet.get_layer('res2b_branch2c')(x)
+    x = resnet.get_layer('bn2b_branch2c')(x)
+    x = resnet.get_layer('add_2')([x, activation_4])
+    activation_7 = resnet.get_layer('activation_7')(x)
+    ##################################################################################################
+    # Identity Block Layer 2 B
+    ##################################################################################################
+    x = resnet.get_layer('res2c_branch2a')(activation_7)
+    x = resnet.get_layer('bn2c_branch2a')(x)
+    x = resnet.get_layer('activation_8')(x)
+    x = resnet.get_layer('res2c_branch2b')(x)
+    x = resnet.get_layer('bn2c_branch2b')(x)
+    x = resnet.get_layer('activation_9')(x)
+    x = resnet.get_layer('res2c_branch2c')(x)
+    x = resnet.get_layer('bn2c_branch2c')(x)
+    x = resnet.get_layer('add_3')([x, activation_7])
+    conv2 = resnet.get_layer('activation_10')(x) # 256
+    ##################################################################################################
+    # Conv Block Layer 3
+    ##################################################################################################
+    x = resnet.get_layer('res3a_branch2a')(conv2)
+    x = resnet.get_layer('bn3a_branch2a')(x)
+    x = resnet.get_layer('activation_11')(x)
+    x = resnet.get_layer('res3a_branch2b')(x)
+    x = resnet.get_layer('bn3a_branch2b')(x)
+    x = resnet.get_layer('activation_12')(x)
+    res3a_branch2c = resnet.get_layer('res3a_branch2c')(x)
+    res3a_branch1 = resnet.get_layer('res3a_branch1')(conv2)
+    bn3a_branch2c = resnet.get_layer('bn3a_branch2c')(res3a_branch2c)
+    bn3a_branch1 = resnet.get_layer('bn3a_branch1')(res3a_branch1)
+    x = resnet.get_layer('add_4')([bn3a_branch2c, bn3a_branch1])
+    activation_13 = resnet.get_layer('activation_13')(x)
+    ##################################################################################################
+    # Identity Block Layer 3 A
+    ##################################################################################################
+    x = resnet.get_layer('res3b_branch2a')(activation_13)
+    x = resnet.get_layer('bn3b_branch2a')(x)
+    x = resnet.get_layer('activation_14')(x)
+    x = resnet.get_layer('res3b_branch2b')(x)
+    x = resnet.get_layer('bn3b_branch2b')(x)
+    x = resnet.get_layer('activation_15')(x)
+    x = resnet.get_layer('res3b_branch2c')(x)
+    x = resnet.get_layer('bn3b_branch2c')(x)
+    x = resnet.get_layer('add_5')([x, activation_13])
+    activation_16 = resnet.get_layer('activation_16')(x)
+    ##################################################################################################
+    # Identity Block Layer 3 B
+    ##################################################################################################
+    x = resnet.get_layer('res3c_branch2a')(activation_16)
+    x = resnet.get_layer('bn3c_branch2a')(x)
+    x = resnet.get_layer('activation_17')(x)
+    x = resnet.get_layer('res3c_branch2b')(x)
+    x = resnet.get_layer('bn3c_branch2b')(x)
+    x = resnet.get_layer('activation_18')(x)
+    x = resnet.get_layer('res3c_branch2c')(x)
+    bn3c_branch2c = resnet.get_layer('bn3c_branch2c')(x)
+    x = resnet.get_layer('add_6')([bn3c_branch2c, activation_16])
+    activation_19 = resnet.get_layer('activation_19')(x)
+    ##################################################################################################
+    # Identity Block Layer 3 C
+    ##################################################################################################
+    x = resnet.get_layer('res3d_branch2a')(activation_19)
+    x = resnet.get_layer('bn3d_branch2a')(x)
+    x = resnet.get_layer('activation_20')(x)
+    x = resnet.get_layer('res3d_branch2b')(x)
+    x = resnet.get_layer('bn3d_branch2b')(x)
+    x = resnet.get_layer('activation_21')(x)
+    x = resnet.get_layer('res3d_branch2c')(x)
+    x = resnet.get_layer('bn3d_branch2c')(x)
+    x = resnet.get_layer('add_7')([x, activation_19])
+    conv3 = resnet.get_layer('activation_22')(x) # 512
+    ##################################################################################################
+    # Conv Block Layer 4
+    ##################################################################################################
+    x = resnet.get_layer('res4a_branch2a')(conv3)
+    x = resnet.get_layer('bn4a_branch2a')(x)
+    x = resnet.get_layer('activation_23')(x)
+    x = resnet.get_layer('res4a_branch2b')(x)
+    x = resnet.get_layer('bn4a_branch2b')(x)
+    x = resnet.get_layer('activation_24')(x)
+    res4a_branch2c = resnet.get_layer('res4a_branch2c')(x)
+    res4a_branch1 = resnet.get_layer('res4a_branch1')(conv3)
+    bn4a_branch2c = resnet.get_layer('bn4a_branch2c')(res4a_branch2c)
+    bn4a_branch1 = resnet.get_layer('bn4a_branch1')(res4a_branch1)
+    x = resnet.get_layer('add_8')([bn4a_branch2c, bn4a_branch1])
+    activation_25 = resnet.get_layer('activation_25')(x)
+    ##################################################################################################
+    # Identity Block Layer 4 A
+    ##################################################################################################
+    x = resnet.get_layer('res4b_branch2a')(activation_25)
+    x = resnet.get_layer('bn4b_branch2a')(x)
+    x = resnet.get_layer('activation_26')(x)
+    x = resnet.get_layer('res4b_branch2b')(x)
+    x = resnet.get_layer('bn4b_branch2b')(x)
+    x = resnet.get_layer('activation_27')(x)
+    x = resnet.get_layer('res4b_branch2c')(x)
+    x = resnet.get_layer('bn4b_branch2c')(x)
+    x = resnet.get_layer('add_9')([x, activation_25])
+    activation_28 = resnet.get_layer('activation_28')(x)
+    ##################################################################################################
+    # Identity Block Layer 4 B
+    ##################################################################################################
+    x = resnet.get_layer('res4c_branch2a')(activation_28)
+    x = resnet.get_layer('bn4c_branch2a')(x)
+    x = resnet.get_layer('activation_29')(x)
+    x = resnet.get_layer('res4c_branch2b')(x)
+    x = resnet.get_layer('bn4c_branch2b')(x)
+    x = resnet.get_layer('activation_30')(x)
+    x = resnet.get_layer('res4c_branch2c')(x)
+    x = resnet.get_layer('bn4c_branch2c')(x)
+    x = resnet.get_layer('add_10')([x, activation_28])
+    activation_31 = resnet.get_layer('activation_31')(x)
+    ##################################################################################################
+    # Identity Block Layer 4 C
+    ##################################################################################################
+    x = resnet.get_layer('res4d_branch2a')(activation_31)
+    x = resnet.get_layer('bn4d_branch2a')(x)
+    x = resnet.get_layer('activation_32')(x)
+    x = resnet.get_layer('res4d_branch2b')(x)
+    x = resnet.get_layer('bn4d_branch2b')(x)
+    x = resnet.get_layer('activation_33')(x)
+    x = resnet.get_layer('res4d_branch2c')(x)
+    x = resnet.get_layer('bn4d_branch2c')(x)
+    x = resnet.get_layer('add_11')([x, activation_31])
+    activation_34 = resnet.get_layer('activation_34')(x)
+    ##################################################################################################
+    # Identity Block Layer 4 D
+    ##################################################################################################
+    x = resnet.get_layer('res4e_branch2a')(activation_34)
+    x = resnet.get_layer('bn4e_branch2a')(x)
+    x = resnet.get_layer('activation_35')(x)
+    x = resnet.get_layer('res4e_branch2b')(x)
+    x = resnet.get_layer('bn4e_branch2b')(x)
+    x = resnet.get_layer('activation_36')(x)
+    x = resnet.get_layer('res4e_branch2c')(x)
+    x = resnet.get_layer('bn4e_branch2c')(x)
+    add_12 = resnet.get_layer('add_12')([x, activation_34])
+    activation_37 = resnet.get_layer('activation_37')(add_12)
+    ##################################################################################################
+    # Identity Block Layer  E
+    ##################################################################################################
+    x = resnet.get_layer('res4f_branch2a')(activation_37)
+    x = resnet.get_layer('bn4f_branch2a')(x)
+    x = resnet.get_layer('activation_38')(x)
+    x = resnet.get_layer('res4f_branch2b')(x)
+    x = resnet.get_layer('bn4f_branch2b')(x)
+    x = resnet.get_layer('activation_39')(x)
+    x = resnet.get_layer('res4f_branch2c')(x)
+    x = resnet.get_layer('bn4f_branch2c')(x)
+    x = resnet.get_layer('add_13')([x, activation_37])
+    conv4 = resnet.get_layer('activation_40')(x) #1024
+    ##################################################################################################
+    # Conv Block Layer 5
+    ##################################################################################################
+    x = resnet.get_layer('res5a_branch2a')(conv4)
+    x = resnet.get_layer('bn5a_branch2a')(x)
+    x = resnet.get_layer('activation_41')(x)
+    x = resnet.get_layer('res5a_branch2b')(x)
+    x = resnet.get_layer('bn5a_branch2b')(x)
+    x = resnet.get_layer('activation_42')(x)
+    res5a_branch2c = resnet.get_layer('res5a_branch2c')(x)
+    res5a_branch1 = resnet.get_layer('res5a_branch1')(conv4)
+    bn5a_branch2c = resnet.get_layer('bn5a_branch2c')(res5a_branch2c)
+    bn5a_branch1 = resnet.get_layer('bn5a_branch1')(res5a_branch1)
+    x = resnet.get_layer('add_14')([bn5a_branch2c, bn5a_branch1])
+    activation_43 = resnet.get_layer('activation_43')(x)
+    ##################################################################################################
+    # Identity Block Layer 5 A
+    ##################################################################################################
+    x = resnet.get_layer('res5b_branch2a')(activation_43)
+    x = resnet.get_layer('bn5b_branch2a')(x)
+    x = resnet.get_layer('activation_44')(x)
+    x = resnet.get_layer('res5b_branch2b')(x)
+    x = resnet.get_layer('bn5b_branch2b')(x)
+    x = resnet.get_layer('activation_45')(x)
+    x = resnet.get_layer('res5b_branch2c')(x)
+    x = resnet.get_layer('bn5b_branch2c')(x)
+    x = resnet.get_layer('add_15')([x, activation_43])
+    activation_46 = resnet.get_layer('activation_46')(x)
+    ##################################################################################################
+    # Identity Block Layer 5 B
+    ##################################################################################################
+    x = resnet.get_layer('res5c_branch2a')(activation_46)
+    x = resnet.get_layer('bn5c_branch2a')(x)
+    x = resnet.get_layer('activation_47')(x)
+    x = resnet.get_layer('res5c_branch2b')(x)
+    x = resnet.get_layer('bn5c_branch2b')(x)
+    x = resnet.get_layer('activation_48')(x)
+    x = resnet.get_layer('res5c_branch2c')(x)
+    x = resnet.get_layer('bn5c_branch2c')(x)
+    x = resnet.get_layer('add_16')([x, activation_46])
+    conv5 = resnet.get_layer('activation_49')(x) # 2048
+    x = MaxPooling2D((1, 1)) (conv5)
 
-def DecoderBlock(input_m, mid_ch, out_ch):
-    """CNN block"""
-    n = Conv2D(mid_ch, 3, activation='relu', padding='same')(input_m)
-    n = Conv2DTranspose(out_ch, (3, 3), strides=(2, 2), padding='same', output_padding=1, activation='relu')(n)
+    x = Conv2D(2048, 3, activation='relu', padding='same', kernel_initializer = 'glorot_normal')(x) #1024 + 2048
+    x = Conv2D(2048, 3, activation='relu', padding='same', kernel_initializer = 'glorot_normal')(x) #1024 + 2048
+    # x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
 
-    # n = UpSampling2D()(input_m)
-    # n = Conv2D(out_ch, 2, activation='relu', padding='same')(n)
-    return n
+    if deconv:
+        x = Conv2DTranspose(1024, (3, 3), strides=(2, 2), padding='same', output_padding=0, activation='relu')(x) #1024
+        center = ZeroPadding2D(padding=1)(x)
+    else:
+        # x = UpSampling2D(size = (2,2))(x)
+        center = Conv2D(1024, 2, activation='relu', padding='same', kernel_initializer = 'glorot_normal')(x) #1024 + 2048
+        # center = ZeroPadding2D(padding=1)(x)
 
-# IMG_CH = 1
-IMG_CH = 3
-CONV_CH = 8
-DEPTH = 5
-D_OUT = 0.2
-BN = True
-UP_CONV = False
-RES = True
+    x = Conv2D(1024, 3, activation='relu', padding='same', kernel_initializer = 'glorot_normal')(concatenate([center, conv5])) #1024 + 2048
+    x = Conv2D(1024, 3, activation='relu', padding='same', kernel_initializer = 'glorot_normal')(x) #1024 + 2048
+    # x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    
+    if deconv:
+        dec5 = Conv2DTranspose(512, (3, 3), strides=(2, 2), padding='same', output_padding=None, activation='relu')(x) #512
+    else:
+        x = UpSampling2D(size = (2,2))(x)
+        dec5 = Conv2D(512, 3, activation='relu', padding='same', kernel_initializer = 'glorot_normal')(x) #1024 + 2048
+        # dec5 = Conv2D(512, 3, activation='relu', padding='same')(x)
 
-# model = UNet((TGT_SIZE, TGT_SIZE, IMG_CH), 
-#              start_ch=CONV_CH, 
-#              depth=DEPTH, 
-#              dropout=D_OUT,
-#              batchnorm=BN, 
-#              upconv=UP_CONV,
-#              residual=RES)
+    x = Conv2D(512, 3, activation='relu', padding='same')(concatenate([dec5, conv4])) #512 + 1024
+    x = Conv2D(512, 3, activation='relu', padding='same')(x) #512 + 1024
+    # x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
 
-vgg16 = keras.applications.vgg16.VGG16(include_top=True, weights='imagenet', input_tensor=None, input_shape=None, pooling=None, classes=1000)
+    if deconv:
+        dec4 = Conv2DTranspose(256, (3, 3), strides=(2, 2), padding='same', output_padding=None, activation='relu')(x) #256
+    else:
+        x = UpSampling2D(size = (2,2))(x)
+        dec4 = Conv2D(256, 3, activation='relu', padding='same', kernel_initializer = 'glorot_normal')(x) #1024 + 2048
+        # dec4 = Conv2D(256, 3, activation='relu', padding='same')(x)
 
-inputs = Input(shape=img_shape, name='img')
-x = vgg16.get_layer("block1_conv1")(inputs)
-conv1 = vgg16.get_layer("block1_conv2")(x)
+    x = Conv2D(256, 3, activation='relu', padding='same')(concatenate([dec4, conv3])) #256 + 512
+    x = Conv2D(256, 3, activation='relu', padding='same')(x) #256 + 512
+    # x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
 
-x = MaxPooling2D((2, 2)) (conv1)
-x = vgg16.get_layer("block2_conv1")(x)
-conv2 = vgg16.get_layer("block2_conv2")(x)
+    if deconv:
+        dec3 = Conv2DTranspose(128, (3, 3), strides=(2, 2), padding='same', output_padding=0, activation='relu')(x) #64
+    else:
+        x = UpSampling2D(size = (2,2))(x)
+        dec3 = Conv2D(128, 3, activation='relu', padding='same', kernel_initializer = 'glorot_normal')(x) #1024 + 2048
+        # dec3 = Conv2D(128, 3, activation='relu', padding='same')(x)
 
-x = MaxPooling2D((2, 2)) (conv2)
-x = vgg16.get_layer("block3_conv1")(x)
-x = vgg16.get_layer("block3_conv2")(x)
-conv3 = vgg16.get_layer("block3_conv3")(x)
+    x = Conv2D(128, 3, activation='relu', padding='same')(concatenate([dec3, conv2])) #128 + 256
+    x = Conv2D(128, 3, activation='relu', padding='same')(x) #128 + 256
+    # x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
 
-x = MaxPooling2D((2, 2)) (conv3)
-x = vgg16.get_layer("block4_conv1")(x)
-x = vgg16.get_layer("block4_conv2")(x)
-conv4 = vgg16.get_layer("block4_conv3")(x)
+    if deconv:
+        x = Conv2DTranspose(64, (3, 3), strides=(2, 2), padding='same', output_padding=None, activation='relu')(x) #32
+        dec2 = ZeroPadding2D(padding=1)(x)
+    else:
+        x = UpSampling2D(size = (2,2))(x)
+        x = Conv2D(64, 3, activation='relu', padding='same', kernel_initializer = 'glorot_normal')(x) #1024 + 2048
+        dec2 = Conv2D(64, 3, activation='relu', padding='same')(x)
 
-x = MaxPooling2D((2, 2)) (conv4)
-x = vgg16.get_layer("block5_conv1")(x)
-x = vgg16.get_layer("block5_conv2")(x)
-conv5 = vgg16.get_layer("block5_conv3")(x)
+    x = Conv2D(64, 3, activation='relu', padding='same')(dec2) #64+256
+    x = Conv2D(64, 3, activation='relu', padding='same')(dec2) #64+256
+    x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
 
-# center
-x = MaxPooling2D((2, 2)) (conv5)
-center = DecoderBlock(x, num_filters * 8 * 2, num_filters * 8)
-dec5 = DecoderBlock(concatenate([center, conv5]), num_filters * 8 * 2, num_filters * 8)
-dec4 = DecoderBlock(concatenate([dec5, conv4]), num_filters * 8 * 2, num_filters * 8)
-dec3 = DecoderBlock(concatenate([dec4, conv3]), num_filters * 4 * 2, num_filters * 2)
-dec2 = DecoderBlock(concatenate([dec3, conv2]), num_filters * 2 * 2, num_filters)
-dec1 = Conv2D(num_filters, 3, activation='relu', padding='same')(concatenate([dec2, conv1]))
+    if deconv:
+        dec1 = Conv2DTranspose(32, (3, 3), strides=(2, 2), padding='same', output_padding=None, activation='relu')(x) #32
+    else:
+        x = UpSampling2D(size = (2,2))(x)
+        x = Conv2D(32, 3, activation='relu', padding='same', kernel_initializer = 'glorot_normal')(x) #1024 + 2048
+        dec1 = Conv2D(32, 2, activation='relu', padding='same')(x)
 
-outputs = Conv2D(1, (1, 1), activation='sigmoid') (dec1)
+    outputs = Conv2D(1, (1, 1), activation='sigmoid') (dec1) #32+64
 
-model = Model(inputs=[inputs], outputs=[outputs])
-# model.compile(optimizer='adam', loss='binary_crossentropy', metrics=[mean_iou])
-# model.summary()
+    return Model(inputs=[inputs], outputs=[outputs])
 
-LR = 3e-4
+def UNET_VGG(img_shape, num_filters=32, do=0.3, bn=1, deconv=1):
+    vgg16 = keras.applications.vgg16.VGG16(include_top=True, weights='imagenet', input_tensor=None, input_shape=None, pooling=None, classes=1000)
+
+    # center
+    x = MaxPooling2D((2, 2)) (conv5)
+    x = Conv2D(512, 3, activation='relu', padding='same')(x)
+    x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    if deconv:
+        center = Conv2DTranspose(256, (3, 3), strides=(2, 2), padding='same', output_padding=1, activation='relu')(x) #256
+    else:
+        x = UpSampling2D()(x)
+        center = Conv2D(256, 2, activation='relu', padding='same')(x)
+
+    x = Conv2D(512, 3, activation='relu', padding='same')(concatenate([center, conv5])) #256 + 512
+    x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    if deconv:
+        dec5 = Conv2DTranspose(256, (3, 3), strides=(2, 2), padding='same', output_padding=1, activation='relu')(x) #256
+    else:
+        x = UpSampling2D()(x)
+        dec5 = Conv2D(256, 2, activation='relu', padding='same')(x)
+
+    x = Conv2D(512, 3, activation='relu', padding='same')(concatenate([dec5, conv4])) #256 + 512
+    x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    if deconv:
+        dec4 = Conv2DTranspose(128, (3, 3), strides=(2, 2), padding='same', output_padding=1, activation='relu')(x) #128
+    else:
+        x = UpSampling2D()(x)
+        dec4 = Conv2D(128, 2, activation='relu', padding='same')(x)
+
+    x = Conv2D(256, 3, activation='relu', padding='same')(concatenate([dec4, conv3]))
+    x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    if deconv:
+        dec3 = Conv2DTranspose(64, (3, 3), strides=(2, 2), padding='same', output_padding=1, activation='relu')(x) #64
+    else:
+        x = UpSampling2D()(x)
+        dec3 = Conv2D(64, 2, activation='relu', padding='same')(x)
+
+    x = Conv2D(128, 3, activation='relu', padding='same')(concatenate([dec3, conv2])) #64+128
+    x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    if deconv:
+        dec1 = Conv2DTranspose(64, (3, 3), strides=(2, 2), padding='same', output_padding=1, activation='relu')(x) #32
+    else:
+        x = UpSampling2D()(x)
+        dec1 = Conv2D(64, 2, activation='relu', padding='same')(x)
+
+    outputs = Conv2D(1, (1, 1), activation='sigmoid') (concatenate([dec1, conv1])) #32+64
+    return model(input=vgg16.input, output=outputs)
+
+def UNET_VGG16(img_shape, num_filters=32, do=0.3, bn=1, deconv=1):
+    vgg16 = keras.applications.vgg16.VGG16(include_top=True, weights='imagenet', input_tensor=None, input_shape=None, pooling=None, classes=1000)
+    # vgg16 = keras.applications.vgg16.VGG16(include_top=True, weights=None, input_tensor=None, input_shape=None, pooling=None, classes=1000)
+    # for layer in vgg16.layers[:-1]: layer.trainable=False
+
+    inputs = Input(shape=img_shape, name='img')
+    x = vgg16.get_layer("block1_conv1")(inputs)
+    conv1 = vgg16.get_layer("block1_conv2")(x) #64
+
+    x = MaxPooling2D((2, 2)) (conv1)
+    x = vgg16.get_layer("block2_conv1")(x)
+    # x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    conv2 = vgg16.get_layer("block2_conv2")(x) #128
+
+    x = MaxPooling2D((2, 2)) (conv2)
+    x = vgg16.get_layer("block3_conv1")(x)
+    # x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    x = vgg16.get_layer("block3_conv2")(x)
+    # x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    conv3 = vgg16.get_layer("block3_conv3")(x) #256
+
+    x = MaxPooling2D((2, 2)) (conv3)
+    x = vgg16.get_layer("block4_conv1")(x)
+    # x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    x = vgg16.get_layer("block4_conv2")(x)
+    # x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    conv4 = vgg16.get_layer("block4_conv3")(x) #512
+
+    x = MaxPooling2D((2, 2)) (conv4)
+    x = vgg16.get_layer("block5_conv1")(x)
+    # x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    x = vgg16.get_layer("block5_conv2")(x)
+    # x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    conv5 = vgg16.get_layer("block5_conv3")(x) #512
+
+    # center
+    x = MaxPooling2D((2, 2)) (conv5)
+    x = Conv2D(512, 3, activation='relu', padding='same')(x)
+    x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    if deconv:
+        center = Conv2DTranspose(256, (3, 3), strides=(2, 2), padding='same', output_padding=1, activation='relu')(x) #256
+    else:
+        x = UpSampling2D()(x)
+        center = Conv2D(256, 2, activation='relu', padding='same')(x)
+
+    x = Conv2D(512, 3, activation='relu', padding='same')(concatenate([center, conv5])) #256 + 512
+    x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    if deconv:
+        dec5 = Conv2DTranspose(256, (3, 3), strides=(2, 2), padding='same', output_padding=1, activation='relu')(x) #256
+    else:
+        x = UpSampling2D()(x)
+        dec5 = Conv2D(256, 2, activation='relu', padding='same')(x)
+
+    x = Conv2D(512, 3, activation='relu', padding='same')(concatenate([dec5, conv4])) #256 + 512
+    x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    if deconv:
+        dec4 = Conv2DTranspose(128, (3, 3), strides=(2, 2), padding='same', output_padding=1, activation='relu')(x) #128
+    else:
+        x = UpSampling2D()(x)
+        dec4 = Conv2D(128, 2, activation='relu', padding='same')(x)
+
+    x = Conv2D(256, 3, activation='relu', padding='same')(concatenate([dec4, conv3])) #128+256
+    x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    if deconv:
+        dec3 = Conv2DTranspose(64, (3, 3), strides=(2, 2), padding='same', output_padding=1, activation='relu')(x) #64
+    else:
+        x = UpSampling2D()(x)
+        dec3 = Conv2D(64, 2, activation='relu', padding='same')(x)
+
+    x = Conv2D(128, 3, activation='relu', padding='same')(concatenate([dec3, conv2])) #64+128
+    x = BatchNormalization()(x) if bn else x
+    x = Dropout(do)(x) if do else x
+    if deconv:
+        dec2 = Conv2DTranspose(32, (3, 3), strides=(2, 2), padding='same', output_padding=1, activation='relu')(x) #32
+    else:
+        x = UpSampling2D()(x)
+        dec2 = Conv2D(32, 2, activation='relu', padding='same')(x)
+
+    outputs = Conv2D(1, (1, 1), activation='sigmoid') (concatenate([dec2, conv1]))
+    return Model(inputs=[inputs], outputs=[outputs])
+
+def merge(inputs, mode, concat_axis=-1):
+    return concatenate(inputs, concat_axis)
+
+def unet(pretrained_weights = None,input_size = (256,256,1)):
+    inputs = Input(input_size, name='img')
+    conv1 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(inputs)
+    conv1 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(conv1)
+    pool1 = MaxPooling2D(pool_size=(2, 2))(conv1)
+    conv2 = Conv2D(128, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(pool1)
+    conv2 = Conv2D(128, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(conv2)
+    pool2 = MaxPooling2D(pool_size=(2, 2))(conv2)
+    conv3 = Conv2D(256, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(pool2)
+    conv3 = Conv2D(256, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(conv3)
+    pool3 = MaxPooling2D(pool_size=(2, 2))(conv3)
+    conv4 = Conv2D(512, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(pool3)
+    conv4 = Conv2D(512, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(conv4)
+    drop4 = Dropout(0.5)(conv4)
+    pool4 = MaxPooling2D(pool_size=(2, 2))(drop4)
+
+    conv5 = Conv2D(1024, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(pool4)
+    conv5 = Conv2D(1024, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(conv5)
+    drop5 = Dropout(0.5)(conv5)
+
+    up6 = Conv2D(512, 2, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(UpSampling2D(size = (2,2))(drop5))
+    merge6 = merge([drop4,up6], mode = 'concat', concat_axis = 3)
+    conv6 = Conv2D(512, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(merge6)
+    conv6 = Conv2D(512, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(conv6)
+
+    up7 = Conv2D(256, 2, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(UpSampling2D(size = (2,2))(conv6))
+    merge7 = merge([conv3,up7], mode = 'concat', concat_axis = 3)
+    conv7 = Conv2D(256, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(merge7)
+    conv7 = Conv2D(256, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(conv7)
+
+    up8 = Conv2D(128, 2, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(UpSampling2D(size = (2,2))(conv7))
+    merge8 = merge([conv2,up8], mode = 'concat', concat_axis = 3)
+    conv8 = Conv2D(128, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(merge8)
+    conv8 = Conv2D(128, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(conv8)
+
+    up9 = Conv2D(64, 2, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(UpSampling2D(size = (2,2))(conv8))
+    merge9 = merge([conv1,up9], mode = 'concat', concat_axis = 3)
+    conv9 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(merge9)
+    conv9 = Conv2D(64, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(conv9)
+    conv9 = Conv2D(2, 3, activation = 'relu', padding = 'same', kernel_initializer = 'glorot_normal')(conv9)
+    conv10 = Conv2D(1, 1, activation = 'sigmoid')(conv9)
+
+    model = Model(input = inputs, output = conv10)
+
+    # if(pretrained_weights):
+    #     model.load_weights(pretrained_weights)
+
+    return model
+
+
+model_name = f'TGS_salt_UNet.h5'
+
+LR = 1e-3
 optimizer = Adam(lr=LR, beta_1=0.9, beta_2=0.999, epsilon=1e-6, decay=LR/5)
 loss = "binary_crossentropy" # or custom loss function like; 'dice_coef'
-model.compile(loss=loss, optimizer=optimizer, metrics=["accuracy", mean_iou])
 
-model_name = f'TGS_salt_UNet_{IMG_CH}_{CONV_CH}_{DEPTH}_{D_OUT>0}_{BN}_{UP_CONV}_{RES}.h5'
+# model = UNET_VGG16((TGT_SIZE, TGT_SIZE, 3))
+model = UNET_RESNET50((TGT_SIZE, TGT_SIZE, 3))
+# model = unet()
+# model = UNet((TGT_SIZE, TGT_SIZE, 3), 
+#              start_ch=8, 
+#              depth=5, 
+#              dropout=0.2,
+#              batchnorm=True, 
+#              upconv=False,
+#              residual=True)
+
+model.compile(loss=loss, optimizer=optimizer, metrics=["accuracy", mean_iou])
 model.summary()
 
-EPOCHS = 30
+EPOCHS = 40
 
 callbacks = [
     EarlyStopping(patience=6, verbose=1),
@@ -361,18 +825,9 @@ callbacks = [
                     verbose=1, 
                     save_best_only=True)]
 
-# history = model.fit({'img': X_train_augm[..., :1], 
-#                      'depth': X_train_augm[:, :DPT_SIZE, :DPT_SIZE, 1:]},
-#                     Y_train_augm, 
-#                     validation_data=({'img': x_valid[..., :1], 
-#                                       'depth': x_valid[:, :DPT_SIZE, :DPT_SIZE, 1:]}, y_valid),
-#                     batch_size=BATCH_SIZE,
-#                     epochs=EPOCHS,
-#                     callbacks=callbacks)
-
 history = model.fit({'img': X_train_augm[..., :3]}, 
                     Y_train_augm, 
-                    validation_data=({'img': x_valid[..., :3]}, 
+                    validation_data=({'img': x_valid[..., :3]},  y_valid),
                     batch_size=BATCH_SIZE,
                     epochs=EPOCHS,
                     callbacks=callbacks)
@@ -487,9 +942,8 @@ masks = train_df.loc[ids_valid[:N]].masks
 preds = preds_valid[:N]
 plot_imgs_masks("validation_prediction_best_threshold",imgs, masks, preds_valid, threshold_best)
 
-x_test = [upsample(np.array(load_img(f"{path_test}/images/{idx}.png", grayscale=True))) / 255 
+x_test = [upsample(np.array(load_img(f"{path_test}/images/{idx}.png", color_mode='grayscale'))) / 255 
                    for idx in tqdm(test_df.index)]
-
 x_test = np.array(x_test).reshape(-1, TGT_SIZE, TGT_SIZE, 1)
 # TODO Create depth layer
 
@@ -498,6 +952,21 @@ x_test_d = [np.ones((4,4,1)) * (test_df.loc[i]["z"] / MAX_DEPTH)
 x_test_d[0].shape
 x_test_d = np.array(x_test_d).reshape(-1, DPT_SIZE, DPT_SIZE, 1)
 x_test_d.shape
+
+canny_test = [upsample(cv2.threshold(
+                cv2.Canny(np.array(load_img(f"{path_test}/images/{idx}.png", color_mode='grayscale')),100,200)
+                    ,90,255,cv2.THRESH_BINARY)[1]) /255 
+                        for idx in tqdm(test_df.index)]
+canny_test = np.array(canny_test).reshape(-1, TGT_SIZE, TGT_SIZE, 1)
+
+median_test = [upsample(cv2.threshold(
+                cv2.medianBlur(np.array(load_img(f"{path_test}/images/{idx}.png", color_mode='grayscale')),5)
+                    ,90,255,cv2.THRESH_BINARY)[1]) /255 
+                        for idx in tqdm(test_df.index)]
+median_test = np.array(median_test).reshape(-1, TGT_SIZE, TGT_SIZE, 1)
+
+x_test = np.concatenate([x_test, canny_test], axis=-1)
+x_test = np.concatenate([x_test, median_test], axis=-1)
 
 preds_test = model.predict({'img': x_test, 'depth': x_test_d}) 
 

@@ -3,7 +3,7 @@ from data import *
 import cv2
 import os
 from skimage.transform import resize
-# data_gen_args = dict(zoom_range=0.005)
+data_gen_args = dict(zoom_range=0.005)
 
 myGene = trainGenerator(2,'data/parts/train','image','label',data_gen_args,save_to_dir = None)
 model = unet()

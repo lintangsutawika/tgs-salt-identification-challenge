@@ -9,6 +9,28 @@ from keras.optimizers import *
 from keras.callbacks import ModelCheckpoint, LearningRateScheduler
 from keras import backend as keras
 
+def mean_iou(y_true, y_pred, score_thres=0.5):
+    """Compute mean(IoU) metric
+    IoU = intersection / union
+    
+    For each (mask)threshold in provided range:
+     - create boolean mask (from probability mask) based on threshold
+     - score the mask 1 if IoU > score_threshold(0.5)
+    Take the mean of the scoress
+
+    https://www.tensorflow.org/api_docs/python/tf/metrics/mean_iou
+    """
+    prec = []
+    for t in np.arange(0.5, 1.0, 0.05):
+        y_pred_bool = tf.to_int32(y_pred > t) # boolean mask by threshold
+        score, update_op = tf.metrics.mean_iou(y_true, y_pred_bool, 2) # mean score over batch(=1)
+        K.get_session().run(tf.local_variables_initializer())
+        with tf.control_dependencies([update_op]):
+            score = tf.identity(score) #> score_thres # !! use identity to transform score in tensor
+        prec.append(score) 
+        
+    return K.mean(K.stack(prec), axis=0)
+
 def merge(inputs, mode, concat_axis=-1):
     return concatenate(inputs, concat_axis)
 
@@ -56,7 +78,7 @@ def unet(pretrained_weights = None,input_size = (256,256,1)):
 
     model = Model(input = inputs, output = conv10)
 
-    model.compile(optimizer = Adam(lr = 1e-4), loss = 'binary_crossentropy', metrics = ['accuracy'])
+    model.compile(optimizer = Adam(lr = 1e-4), loss = 'binary_crossentropy', metrics = ['accuracy',mean_iou])
     
     model.summary()
 
