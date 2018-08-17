@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 
 import os
 from glob import glob
@@ -116,6 +115,7 @@ val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_val,
                                            shuffle=False)
 
 start_fm = 16
+
 model = UNet11(pretrained=False)
 # model.cuda();
 
@@ -127,7 +127,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 mean_train_losses = []
 mean_val_losses = []
-for epoch in range(12):
+for epoch in range(25):
     train_losses = []
     val_losses = []
     with tqdm(train_loader) as pbar:
@@ -168,9 +168,9 @@ for epoch in range(12):
 
 train_loss_series = pd.Series(mean_train_losses)
 val_loss_series = pd.Series(mean_val_losses)
-train_loss_series.plot(label="train")
-val_loss_series.plot(label="validation")
-plt.legend()
+#train_loss_series.plot(label="train")
+#val_loss_series.plot(label="validation")
+#plt.legend()
 
 y_pred_true_pairs = []
 for images, masks in val_loader:
