@@ -52,7 +52,6 @@ for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
     Y_train[n] = resize(mask, (128, 128, 1), 
                         mode='constant', 
                         preserve_range=True)
-
 print('Done!')
 
 # https://stackoverflow.com/questions/50052295/how-do-you-load-images-into-pytorch-dataloader
@@ -77,7 +76,9 @@ class saltIDDataset(torch.utils.data.Dataset):
         mask = None
         if self.train:
             mask = self.masks[idx]
-        return (image, mask)
+            return (image, mask)
+        else:
+            return image
 
 X_train_shaped = X_train.reshape(-1, im_chan, im_height, im_height)/255
 Y_train_shaped = Y_train.reshape(-1, 1, im_height, im_height)
@@ -85,8 +86,9 @@ Y_train_shaped = Y_train.reshape(-1, 1, im_height, im_height)
 X_train_shaped = X_train_shaped.astype(np.float32)
 Y_train_shaped = Y_train_shaped.astype(np.float32)
 
-# torch.cuda.manual_seed_all(4200)
-# np.random.seed(133700)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(4200)
+    np.random.seed(133700)
 
 indices = list(range(len(X_train_shaped)))
 np.random.shuffle(indices)
@@ -187,7 +189,8 @@ for images, masks in val_loader:
         y_pred_true_pairs.append((y_pred, masks[i].numpy()))
 
 # https://www.kaggle.com/leighplt/goto-pytorch-fix-for-v0-3
-for threshold in np.linspace(0, 1, 11):
+thresholds = []
+for threshold in np.linspace(0, 1, 51):
     
     ious = []
     for y_pred, mask in y_pred_true_pairs:
@@ -195,28 +198,63 @@ for threshold in np.linspace(0, 1, 11):
         iou = jaccard_similarity_score(mask.flatten(), prediction.flatten())
         ious.append(iou)
         
-    accuracies = [np.mean(ious > iou_threshold)
-                 for iou_threshold in np.linspace(0.5, 0.95, 10)]
+    accuracies = np.mean([np.mean(ious > iou_threshold) for iou_threshold in np.linspace(0.5, 0.95, 10)])
+    thresholds.append([threshold, accuracies])
     print('Threshold: %.1f, Metric: %.3f' % (threshold, np.mean(accuracies)))
 
-threshold = best_threshold
-binary_prediction = (all_predictions_stacked > threshold).astype(int)
+thresholds = np.asarray(thresholds)
+best_threshold = thresholds[np.min(np.where(thresholds[:,1] == np.max(thresholds[:,1]))),0]
+print('threshold: {}'.format(best_threshold))
 
-# def rle_encoding(x):
-#     dots = np.where(x.T.flatten() == 1)[0]
-#     run_lengths = []
-#     prev = -2
-#     for b in dots:
-#         if (b > prev+1): run_lengths.extend((b + 1, 0))
-#         run_lengths[-1] += 1
-#         prev = b
-#     return run_lengths
+X_test = np.zeros((len(test_ids), im_height, im_width, im_chan), dtype=np.uint8)
+print('Getting and resizing test images')
+sys.stdout.flush()
+for n, id_ in tqdm(enumerate(test_ids), total=len(test_ids)):
+    img = imread(path_test + '/images/' + id_)
+    x = resize(img, (128, 128, 1), mode='constant', preserve_range=True)
+    X_test[n] = x
 
-# all_masks = []
-# for p_mask in list(binary_prediction):
-#     p_mask = rle_encoding(p_mask)
-#     all_masks.append(' '.join(map(str, p_mask)))
+X_test_shaped = X_test.reshape(-1, im_chan, im_height, im_height)/255
+X_test_shaped = X_test_shaped.astype(np.float32)
 
-# submit = pd.DataFrame([test_file_list, all_masks]).T
-# submit.columns = ['id', 'rle_mask']
-# submit.to_csv('submit_baseline_torch.csv', index = False)
+salt_ID_dataset_test = saltIDDataset(X_test_shaped, 
+                                      train=False) 
+test_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_test, 
+                                           batch_size=batch_size, 
+                                           shuffle=False)
+
+y_pred_test = []
+for images in test_loader:
+    if torch.cuda.is_available():
+        images = Variable(images.cuda())
+    else:
+        images = Variable(images)
+
+    y_preds = model(images)
+    for i, _ in enumerate(tqdm(images)):
+        y_pred = y_preds[i] 
+        y_pred = torch.sigmoid(y_pred)
+        y_pred = y_pred.cpu().data.numpy()
+        y_pred_test.append(y_pred)
+
+binary_prediction = (y_pred_test > best_threshold).astype(int)
+
+def rle_encoding(x):
+    dots = np.where(x.T.flatten() == 1)[0]
+    run_lengths = []
+    prev = -2
+    for b in dots:
+        if (b > prev+1): run_lengths.extend((b + 1, 0))
+        run_lengths[-1] += 1
+        prev = b
+    return run_lengths
+
+all_masks = []
+for p_mask in list(binary_prediction):
+    p_mask = rle_encoding(p_mask)
+    all_masks.append(' '.join(map(str, p_mask)))
+
+test_file_list = [f.split('/')[-1].split('.')[0] for f in test_path_images_list]
+submit = pd.DataFrame([test_file_list, all_masks]).T
+submit.columns = ['id', 'rle_mask']
+submit.to_csv('submission.csv', index = False)
