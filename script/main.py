@@ -117,7 +117,8 @@ val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_val,
 start_fm = 16
 
 model = UNet11(pretrained=False)
-# model.cuda();
+if torch.cuda.is_available():
+    model.cuda();
 
 criterion = nn.BCEWithLogitsLoss()
 
@@ -131,9 +132,10 @@ for epoch in range(25):
     train_losses = []
     val_losses = []
     with tqdm(train_loader) as pbar:
-        for images, masks in pbar:        
-            # images = Variable(images.cuda())
-            # masks = Variable(masks.cuda())
+        for images, masks in pbar:    
+            if torch.cuda.is_available():    
+                images = Variable(images.cuda())
+                masks = Variable(masks.cuda())
 
             images = Variable(images)
             masks = Variable(masks)
@@ -151,8 +153,9 @@ for epoch in range(25):
 
     with tqdm(val_loader) as pbar:
         for images, masks in pbar:
-            # images = Variable(images.cuda())
-            # masks = Variable(masks.cuda())
+            if torch.cuda.is_available():
+                images = Variable(images.cuda())
+                masks = Variable(masks.cuda())
             
             images = Variable(images)
             masks = Variable(masks)
