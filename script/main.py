@@ -198,8 +198,9 @@ for epoch in range(25):
         previous_val_losses = mean_val_losses[0]
         torch.save(model_conv.state_dict(), 'pretrained.pth')
 
-model = UNet11(pretrained=True)
-# model = UNetVGG16(pretrained='custom')
+# model = UNet11(pretrained=True)
+model = UNetVGG16(pretrained='custom')
+# model = UNetVGG16(pretrained=True)
 if torch.cuda.is_available():
     model.cuda()
 

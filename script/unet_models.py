@@ -252,7 +252,7 @@ class UNetVGG16(nn.Module):
 
         self.pool = nn.MaxPool2d(2, 2)
 
-        if pretrained="custom":
+        if pretrained=="custom":
             pretrained_model=torch.load("custom_pretrained_VGG16.pth")
 
             custom_model = torchvision.models.vgg16(pretrained=False)
