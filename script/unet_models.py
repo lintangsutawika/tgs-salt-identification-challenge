@@ -252,7 +252,18 @@ class UNetVGG16(nn.Module):
 
         self.pool = nn.MaxPool2d(2, 2)
 
-        self.encoder = torchvision.models.vgg16(pretrained=pretrained).features
+        if pretrained=="custom":
+            pretrained_model=torch.load("custom_pretrained_VGG16.pth")
+
+            custom_model = torchvision.models.vgg16(pretrained=False)
+            num_features = custom_model.classifier[6].in_features
+            features = list(custom_model.classifier.children())[:-1] # Remove last layer
+            features.extend([nn.Linear(num_features, 6)]) # Add our layer with 6 outputs
+            custom_model.classifier = nn.Sequential(*features) # Replace the model classifier
+            custom_model.load_state_dict(pretrained_model)
+            self.encoder = custom_model.features
+        else:
+            self.encoder = torchvision.models.vgg16(pretrained=pretrained).features
 
         self.relu = nn.ReLU(inplace=True)
 

@@ -115,7 +115,7 @@ salt_ID_dataset_val = saltIDDataset(X_train_shaped[val_idxs],
 salt_ID_dataset_pretrain = saltIDDataset(X_train_shaped[train_idxs], 
                                       train=True, 
                                       preprocessed_masks=Y_target[train_idxs])
-salt_ID_dataset_preval = saltIDDataset(X_train_shaped[train_idxs], 
+salt_ID_dataset_preval = saltIDDataset(X_train_shaped[val_idxs], 
                                       train=True, 
                                       preprocessed_masks=Y_target[val_idxs])
 
@@ -135,18 +135,17 @@ preval_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_preval,
                                            batch_size=batch_size, 
                                            shuffle=False)
 
-start_fm = 16
-
 
 #Pretraining
 model_conv = models.vgg16(pretrained=True)
-if torch.cuda.is_available():
-    model_conv.cuda()
 
 num_features = model_conv.classifier[6].in_features
 features = list(model_conv.classifier.children())[:-1] # Remove last layer
 features.extend([nn.Linear(num_features, 6)]) # Add our layer with 4 outputs
 model_conv.classifier = nn.Sequential(*features) # Replace the model classifier
+
+if torch.cuda.is_available():
+    model_conv.cuda()
 
 criterion = nn.CrossEntropyLoss()
 optimizer = torch.optim.Adam(model_conv.parameters(), lr=0.001)
@@ -162,14 +161,14 @@ for epoch in range(25):
             if torch.cuda.is_available():    
                 images = Variable(images.cuda())
                 masks = Variable(masks.cuda())
+            else:
+                images = Variable(images)
+                masks = Variable(masks)
 
-            images = Variable(images)
-            masks = Variable(masks)
-            
             outputs = model_conv(images)
             
             loss = criterion(outputs, np.squeeze(masks))
-            train_losses.append(loss.data)
+            train_losses.append(loss.data.cpu())
 
             optimizer.zero_grad()
             loss.backward()
@@ -182,9 +181,9 @@ for epoch in range(25):
             if torch.cuda.is_available():
                 images = Variable(images.cuda())
                 masks = Variable(masks.cuda())
-            
-            images = Variable(images)
-            masks = Variable(masks)
+            else:
+                images = Variable(images)
+                masks = Variable(masks)
             
             outputs = model_conv(images)
             loss = criterion(outputs, np.squeeze(masks))
@@ -195,13 +194,15 @@ for epoch in range(25):
     # Print Loss
     print('Epoch: {}. Train Loss: {}. Val Loss: {}'.format(epoch+1, np.mean(train_losses), np.mean(val_losses)))
 
-    if mean_val_losses < previous_val_losses:
-        previous_val_losses = mean_val_losses
-        model_conv.save_state_dict('pretrained.pt')
+    if mean_val_losses[0] < previous_val_losses:
+        previous_val_losses = mean_val_losses[0]
+        torch.save(model_conv.state_dict(), 'pretrained.pth')
 
-model = UNet11(pretrained=False)
+# model = UNet11(pretrained=True)
+model = UNetVGG16(pretrained='custom')
+# model = UNetVGG16(pretrained=True)
 if torch.cuda.is_available():
-    model.cuda();
+    model.cuda()
 
 learning_rate = 1e-3
 criterion = nn.BCEWithLogitsLoss()
