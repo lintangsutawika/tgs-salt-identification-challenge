@@ -17,11 +17,13 @@ import torch.nn.functional as F
 import torchvision.datasets as dsets
 from torch.autograd import Variable
 
+from torchvision import models
 from unet_models import AlbuNet, UNet11, UNetVGG16, UNetResNet
 
-im_width = 128
-im_height = 128
+im_width = 224
+im_height = 224
 im_chan = 3
+batch_size = 16
 path_train = '../input/train'
 path_test = '../input/test'
 
@@ -46,12 +48,17 @@ print('Getting and resizing train images and masks ... ')
 sys.stdout.flush()
 for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
     img = imread(path_train + '/images/' + id_)
-    x = resize(img, (128, 128, 1), mode='constant', preserve_range=True)
+    x = resize(img, (im_height, im_width, 1), mode='constant', preserve_range=True)
     X_train[n] = x
     mask = imread(path_train + '/masks/' + id_)
-    Y_train[n] = resize(mask, (128, 128, 1), 
+    Y_train[n] = resize(mask, (im_height, im_width, 1), 
                         mode='constant', 
                         preserve_range=True)
+
+Y_target = [np.sum(x)/(im_height*im_width)*100 for x in Y_train]
+Y_target = [int(x) for x in pd.cut(Y_target, bins=[0, 0.1, 10.0, 40.0, 60.0, 90.0, 100.0], include_lowest=True, labels=['0','1','2','3','4','5'])]
+Y_target = np.expand_dims(Y_target, 1)
+    # include_lowest=True, labels=['No salt', 'Very low', 'Low', 'Medium', 'High', 'Very high'])
 print('Done!')
 
 # https://stackoverflow.com/questions/50052295/how-do-you-load-images-into-pytorch-dataloader
@@ -80,8 +87,8 @@ class saltIDDataset(torch.utils.data.Dataset):
         else:
             return image
 
-X_train_shaped = X_train.reshape(-1, im_chan, im_height, im_height)/255
-Y_train_shaped = Y_train.reshape(-1, 1, im_height, im_height)
+X_train_shaped = X_train.reshape(-1, im_chan, im_height, im_width)/255
+Y_train_shaped = Y_train.reshape(-1, 1, im_height, im_width)
 
 X_train_shaped = X_train_shaped.astype(np.float32)
 Y_train_shaped = Y_train_shaped.astype(np.float32)
@@ -105,8 +112,12 @@ salt_ID_dataset_train = saltIDDataset(X_train_shaped[train_idxs],
 salt_ID_dataset_val = saltIDDataset(X_train_shaped[val_idxs], 
                                       train=True, 
                                       preprocessed_masks=Y_train_shaped[val_idxs])
-
-batch_size = 16
+salt_ID_dataset_pretrain = saltIDDataset(X_train_shaped[train_idxs], 
+                                      train=True, 
+                                      preprocessed_masks=Y_target[train_idxs])
+salt_ID_dataset_preval = saltIDDataset(X_train_shaped[train_idxs], 
+                                      train=True, 
+                                      preprocessed_masks=Y_target[val_idxs])
 
 train_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_train, 
                                            batch_size=batch_size, 
@@ -116,16 +127,84 @@ val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_val,
                                            batch_size=batch_size, 
                                            shuffle=False)
 
+pretrain_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_pretrain, 
+                                           batch_size=batch_size, 
+                                           shuffle=True)
+
+preval_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_preval, 
+                                           batch_size=batch_size, 
+                                           shuffle=False)
+
 start_fm = 16
+
+
+#Pretraining
+model_conv = models.vgg16(pretrained=True)
+if torch.cuda.is_available():
+    model_conv.cuda()
+
+num_features = model_conv.classifier[6].in_features
+features = list(model_conv.classifier.children())[:-1] # Remove last layer
+features.extend([nn.Linear(num_features, 6)]) # Add our layer with 4 outputs
+model_conv.classifier = nn.Sequential(*features) # Replace the model classifier
+
+criterion = nn.CrossEntropyLoss()
+optimizer = torch.optim.Adam(model_conv.parameters(), lr=0.001)
+
+mean_train_losses = []
+mean_val_losses = []
+previous_val_losses = 1000
+for epoch in range(25):
+    train_losses = []
+    val_losses = []
+    with tqdm(pretrain_loader) as pbar:
+        for images, masks in pbar:    
+            if torch.cuda.is_available():    
+                images = Variable(images.cuda())
+                masks = Variable(masks.cuda())
+
+            images = Variable(images)
+            masks = Variable(masks)
+            
+            outputs = model_conv(images)
+            
+            loss = criterion(outputs, np.squeeze(masks))
+            train_losses.append(loss.data)
+
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            pbar.set_description("Loss: {0:.2f}".format(loss))
+
+    with tqdm(preval_loader) as pbar:
+        for images, masks in pbar:
+            if torch.cuda.is_available():
+                images = Variable(images.cuda())
+                masks = Variable(masks.cuda())
+            
+            images = Variable(images)
+            masks = Variable(masks)
+            
+            outputs = model_conv(images)
+            loss = criterion(outputs, np.squeeze(masks))
+            val_losses.append(loss.data)
+    
+    mean_train_losses.append(np.mean(train_losses))
+    mean_val_losses.append(np.mean(val_losses))
+    # Print Loss
+    print('Epoch: {}. Train Loss: {}. Val Loss: {}'.format(epoch+1, np.mean(train_losses), np.mean(val_losses)))
+
+    if mean_val_losses < previous_val_losses:
+        previous_val_losses = mean_val_losses
+        model_conv.save_state_dict('pretrained.pt')
 
 model = UNet11(pretrained=False)
 if torch.cuda.is_available():
     model.cuda();
 
-criterion = nn.BCEWithLogitsLoss()
-
 learning_rate = 1e-3
-
+criterion = nn.BCEWithLogitsLoss()
 optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
 mean_train_losses = []
