@@ -1,12 +1,13 @@
 import pandas as pd
 import numpy as np
 
+import gc
 import os
 from glob import glob
 import sys
 import random
 
-from tqdm import tqdm
+from tqdm import tqdm,tqdm_notebook
 from skimage.io import imread, imshow
 from skimage.transform import resize
 from sklearn.metrics import jaccard_similarity_score
@@ -20,8 +21,8 @@ from torch.autograd import Variable
 from torchvision import models
 from unet_models import AlbuNet, UNet11, UNetVGG16, UNetResNet
 
-im_width = 224
-im_height = 224
+im_width = 128
+im_height = 128
 im_chan = 3
 batch_size = 16
 path_train = '../input/train'
@@ -44,6 +45,7 @@ test_ids = next(os.walk(test_path_images))[2]
 # Get and resize train images and masks
 X_train = np.zeros((len(train_ids), im_height, im_width, im_chan), dtype=np.uint8)
 Y_train = np.zeros((len(train_ids), im_height, im_width, 1), dtype=np.bool_)
+Y_target = np.zeros((len(train_ids), 1), dtype=int)
 print('Getting and resizing train images and masks ... ')
 sys.stdout.flush()
 for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
@@ -54,11 +56,15 @@ for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
     Y_train[n] = resize(mask, (im_height, im_width, 1), 
                         mode='constant', 
                         preserve_range=True)
+    if np.sum(Y_train[n])/(im_height*im_width)*100 == 0:
+        Y_target[n] = 0.0
+    else:
+        Y_target[n] = 1.0
 
-Y_target = [np.sum(x)/(im_height*im_width)*100 for x in Y_train]
-Y_target = [int(x) for x in pd.cut(Y_target, bins=[0, 0.1, 10.0, 40.0, 60.0, 90.0, 100.0], include_lowest=True, labels=['0','1','2','3','4','5'])]
-Y_target = np.expand_dims(Y_target, 1)
-    # include_lowest=True, labels=['No salt', 'Very low', 'Low', 'Medium', 'High', 'Very high'])
+# Y_target = [int(x) for x in pd.cut(Y_target.squeeze(), bins=[0, 0.1, 100.0], include_lowest=True, labels=['0','1'])]
+# Y_target = [int(x) for x in pd.cut(Y_target.squeeze(), bins=[0, 0.1, 10.0, 40.0, 60.0, 90.0, 100.0], include_lowest=True, labels=['0','1','2','3','4','5'])]
+# include_lowest=True, labels=['No salt', 'Very low', 'Low', 'Medium', 'High', 'Very high'])
+# Y_target = np.expand_dims(Y_target, 1)
 print('Done!')
 
 # https://stackoverflow.com/questions/50052295/how-do-you-load-images-into-pytorch-dataloader
@@ -137,12 +143,14 @@ preval_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_preval,
 
 
 #Pretraining
-model_conv = models.vgg16(pretrained=True)
+model_conv = models.resnet34(pretrained=True)
+model_conv.fc = nn.Linear(model_conv.fc.in_features, 2)
 
-num_features = model_conv.classifier[6].in_features
-features = list(model_conv.classifier.children())[:-1] # Remove last layer
-features.extend([nn.Linear(num_features, 6)]) # Add our layer with 4 outputs
-model_conv.classifier = nn.Sequential(*features) # Replace the model classifier
+# model_conv = models.vgg16(pretrained=True)
+# num_features = model_conv.classifier[6].in_features
+# features = list(model_conv.classifier.children())[:-1] # Remove last layer
+# features.extend([nn.Linear(num_features, 2)]) # Add our layer with 4 outputs
+# model_conv.classifier = nn.Sequential(*features) # Replace the model classifier
 
 if torch.cuda.is_available():
     model_conv.cuda()
@@ -156,6 +164,7 @@ previous_val_losses = 1000
 for epoch in range(25):
     train_losses = []
     val_losses = []
+    model_conv.train()
     with tqdm(pretrain_loader) as pbar:
         for images, masks in pbar:    
             if torch.cuda.is_available():    
@@ -167,15 +176,16 @@ for epoch in range(25):
 
             outputs = model_conv(images)
             
-            loss = criterion(outputs, np.squeeze(masks))
+            loss = criterion(outputs, masks.view(-1))
             train_losses.append(loss.data.cpu())
 
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
 
-            pbar.set_description("Loss: {0:.2f}".format(loss))
+            pbar.set_description("Loss: {0:.2f}".format(loss.cpu().data[0]))
 
+    model_conv.eval()
     with tqdm(preval_loader) as pbar:
         for images, masks in pbar:
             if torch.cuda.is_available():
@@ -186,7 +196,7 @@ for epoch in range(25):
                 masks = Variable(masks)
             
             outputs = model_conv(images)
-            loss = criterion(outputs, np.squeeze(masks))
+            loss = criterion(outputs, masks.view(-1))
             val_losses.append(loss.data)
     
     mean_train_losses.append(np.mean(train_losses))
@@ -196,11 +206,11 @@ for epoch in range(25):
 
     if mean_val_losses[0] < previous_val_losses:
         previous_val_losses = mean_val_losses[0]
-        torch.save(model_conv.state_dict(), 'pretrained.pth')
+        torch.save(model_conv.state_dict(), 'custom_pretrained_RESNET34.pth')
 
 # model = UNet11(pretrained=True)
-model = UNetVGG16(pretrained='custom')
-# model = UNetVGG16(pretrained=True)
+# model = UNetVGG16(pretrained='custom')
+model = UNetResNet(34, 1, pretrained='custom')
 if torch.cuda.is_available():
     model.cuda()
 
@@ -218,9 +228,9 @@ for epoch in range(25):
             if torch.cuda.is_available():    
                 images = Variable(images.cuda())
                 masks = Variable(masks.cuda())
-
-            images = Variable(images)
-            masks = Variable(masks)
+            else:
+                images = Variable(images)
+                masks = Variable(masks)
             
             outputs = model(images)        
             
@@ -238,9 +248,9 @@ for epoch in range(25):
             if torch.cuda.is_available():
                 images = Variable(images.cuda())
                 masks = Variable(masks.cuda())
-            
-            images = Variable(images)
-            masks = Variable(masks)
+            else:
+                images = Variable(images)
+                masks = Variable(masks)
             
             outputs = model(images)
             loss = criterion(outputs, masks)
@@ -251,22 +261,28 @@ for epoch in range(25):
     # Print Loss
     print('Epoch: {}. Train Loss: {}. Val Loss: {}'.format(epoch+1, np.mean(train_losses), np.mean(val_losses)))
 
-train_loss_series = pd.Series(mean_train_losses)
-val_loss_series = pd.Series(mean_val_losses)
+# train_loss_series = pd.Series(mean_train_losses)
+# val_loss_series = pd.Series(mean_val_losses)
 #train_loss_series.plot(label="train")
 #val_loss_series.plot(label="validation")
 #plt.legend()
 
 y_pred_true_pairs = []
-for images, masks in val_loader:
-    # images = Variable(images.cuda())
-    images = Variable(images)
-    y_preds = model(images)
-    for i, _ in enumerate(images):
-        y_pred = y_preds[i] 
-        y_pred = torch.sigmoid(y_pred)
-        y_pred = y_pred.cpu().data.numpy()
-        y_pred_true_pairs.append((y_pred, masks[i].numpy()))
+with tqdm(val_loader) as pbar:
+    for images, masks in pbar:
+        if torch.cuda.is_available():
+            images = Variable(images.cuda())
+            masks = Variable(masks.cuda())
+        else:
+            images = Variable(images)
+            masks = Variable(masks)
+
+        y_preds = model(images)
+        for i, _ in enumerate(images):
+            y_pred = y_preds[i] 
+            y_pred = torch.sigmoid(y_pred)
+            y_pred = y_pred.cpu().data.numpy()
+            y_pred_true_pairs.append((y_pred, masks[i].cpu().data.numpy()))
 
 # https://www.kaggle.com/leighplt/goto-pytorch-fix-for-v0-3
 thresholds = []
@@ -280,7 +296,7 @@ for threshold in np.linspace(0, 1, 51):
         
     accuracies = np.mean([np.mean(ious > iou_threshold) for iou_threshold in np.linspace(0.5, 0.95, 10)])
     thresholds.append([threshold, accuracies])
-    print('Threshold: %.1f, Metric: %.3f' % (threshold, np.mean(accuracies)))
+    print('Threshold: %.2f, Metric: %.3f' % (threshold, np.mean(accuracies)))
 
 thresholds = np.asarray(thresholds)
 best_threshold = thresholds[np.min(np.where(thresholds[:,1] == np.max(thresholds[:,1]))),0]
@@ -291,10 +307,10 @@ print('Getting and resizing test images')
 sys.stdout.flush()
 for n, id_ in tqdm(enumerate(test_ids), total=len(test_ids)):
     img = imread(path_test + '/images/' + id_)
-    x = resize(img, (128, 128, 1), mode='constant', preserve_range=True)
+    x = resize(img, (im_height, im_width, 1), mode='constant', preserve_range=True)
     X_test[n] = x
 
-X_test_shaped = X_test.reshape(-1, im_chan, im_height, im_height)/255
+X_test_shaped = X_test.reshape(-1, im_chan, im_height, im_width )/255
 X_test_shaped = X_test_shaped.astype(np.float32)
 
 salt_ID_dataset_test = saltIDDataset(X_test_shaped, 
@@ -304,14 +320,14 @@ test_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_test,
                                            shuffle=False)
 
 y_pred_test = []
-for images in test_loader:
+for images in tqdm(test_loader):
     if torch.cuda.is_available():
         images = Variable(images.cuda())
     else:
         images = Variable(images)
 
     y_preds = model(images)
-    for i, _ in enumerate(tqdm(images)):
+    for i, _ in enumerate(images):
         y_pred = y_preds[i] 
         y_pred = torch.sigmoid(y_pred)
         y_pred = y_pred.cpu().data.numpy()
@@ -334,7 +350,7 @@ for p_mask in list(binary_prediction):
     p_mask = rle_encoding(p_mask)
     all_masks.append(' '.join(map(str, p_mask)))
 
-test_file_list = [f.split('/')[-1].split('.')[0] for f in test_path_images_list]
+test_file_list = [f.split('/')[-1].split('.')[0] for f in tqdm(test_path_images_list)]
 submit = pd.DataFrame([test_file_list, all_masks]).T
 submit.columns = ['id', 'rle_mask']
 submit.to_csv('submission.csv', index = False)
