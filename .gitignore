@@ -1,3 +1,4 @@
+*.csv
 input/
 *pth
 *.tar.gz
