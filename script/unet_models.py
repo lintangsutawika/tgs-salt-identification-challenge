@@ -360,7 +360,7 @@ class UNetResNet(nn.Module):
                 pretrained_model=torch.load("custom_pretrained_RESNET34.pth")
 
                 custom_model = models.resnet34(pretrained=True)
-                custom_model.fc = nn.Linear(custom_model.fc.in_features, 2)
+                custom_model.fc = nn.Linear(custom_model.fc.in_features, 11)
                 custom_model.load_state_dict(pretrained_model)
                 self.encoder = custom_model
                 bottom_channel_nr = 512
@@ -447,7 +447,7 @@ class Unet(nn.Module):
     
     def __init__(self):
         super(Unet, self).__init__()
-        
+        start_fm = 16
         # Input 128x128x1
         
         #Contracting Path
