@@ -1,539 +1,219 @@
-# Adapted from https://github.com/neptune-ml/open-solution-salt-detection
+#  https://github.com/pytorch/vision/blob/master/torchvision/models/resnet.py
+#  resnet18 :  BasicBlock, [2, 2, 2, 2]
+#  resnet34 :  BasicBlock, [3, 4, 6, 3]
+#  resnet50 :  Bottleneck  [3, 4, 6, 3]
+#
 
-from torch import nn
-from torch.nn import functional as F
+# https://medium.com/neuromation-io-blog/deepglobe-challenge-three-papers-from-neuromation-accepted-fe09a1a7fa53
+# https://github.com/ternaus/TernausNetV2
+# https://github.com/neptune-ml/open-solution-salt-detection
+# https://github.com/lyakaap/Kaggle-Carvana-3rd-Place-Solution
+
+##############################################################3
+#  https://github.com/neptune-ml/open-solution-salt-detection/blob/master/src/unet_models.py
+#  https://pytorch.org/docs/stable/torchvision/models.html
+import os 
+import numpy as np
+
 import torch
-from torchvision import models
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+
 import torchvision
 
-"""
-This script has been taken (and modified) from :
-https://github.com/ternaus/TernausNet
+from loss import *
+from metric import *
 
-@ARTICLE{arXiv:1801.05746,
-         author = {V. Iglovikov and A. Shvets},
-          title = {TernausNet: U-Net with VGG11 Encoder Pre-Trained on ImageNet for Image Segmentation},
-        journal = {ArXiv e-prints},
-         eprint = {1801.05746}, 
-           year = 2018
-        }
-"""
+class ConvBn2d(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=(3,3), stride=(1,1), padding=(1,1)):
+        super(ConvBn2d, self).__init__()
 
+        self.conv = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, bias=False)
+        self.bn = nn.BatchNorm2d(out_channels)
 
-def conv3x3(in_, out):
-    return nn.Conv2d(in_, out, 3, padding=1)
-
-
-class ConvRelu(nn.Module):
-    def __init__(self, in_, out):
-        super().__init__()
-        self.conv = conv3x3(in_, out)
-        self.activation = nn.ReLU(inplace=True)
-
-    def forward(self, x):
-        x = self.conv(x)
-        x = self.activation(x)
+    def forward(self, z):
+        x = self.conv(z)
+        x = self.bn(x)
         return x
 
+class Decoder(nn.Module):
+    def __init__(self, in_channels, channels, out_channels ):
+        super(Decoder, self).__init__()
+        self.conv1 =  ConvBn2d(in_channels,  channels, kernel_size=3, padding=1)
+        self.conv2 =  ConvBn2d(channels, out_channels, kernel_size=3, padding=1)
 
-class NoOperation(nn.Module):
-    def forward(self, x):
+    def forward(self, x ):
+        x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)#False
+        x = F.relu(self.conv1(x),inplace=True)
+        x = F.relu(self.conv2(x),inplace=True)
         return x
 
+# resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth'
+# resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth'
+# resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth'
+# resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth'
+# resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth'
 
-class DecoderBlock(nn.Module):
-    def __init__(self, in_channels, middle_channels, out_channels):
+class UNetResNet34(nn.Module):
+    # PyTorch U-Net model using ResNet(34, 50 , 101 or 152) encoder.
+
+    def load_pretrain(self, pretrain_file):
+        self.encoder.load_state_dict(torch.load(pretrain_file, map_location=lambda storage, loc: storage))
+
+    def __init__(self ):
         super().__init__()
+        self.resnet = torchvision.models.resnet34()
 
-        self.block = nn.Sequential(
-            ConvRelu(in_channels, middle_channels),
-            nn.ConvTranspose2d(middle_channels, out_channels, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU(inplace=True)
+        self.conv1 = nn.Sequential(
+            self.resnet.conv1,
+            self.resnet.bn1,
+            self.resnet.relu,
+        )# 64
+        self.encoder2 = self.resnet.layer1  # 64
+        self.encoder3 = self.resnet.layer2  #128
+        self.encoder4 = self.resnet.layer3  #256
+        self.encoder5 = self.resnet.layer4  #512
+
+        self.center = nn.Sequential(
+            ConvBn2d(512, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            ConvBn2d(512, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+        )
+
+        self.decoder5 = Decoder(512+256, 512, 256)
+        self.decoder4 = Decoder(256+256, 512, 256)
+        self.decoder3 = Decoder(128+256, 256,  64)
+        self.decoder2 = Decoder( 64+ 64, 128, 128)
+        self.decoder1 = Decoder(128    , 128,  32)
+
+        self.logit    = nn.Sequential(
+            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(32,  1, kernel_size=1, padding=0),
         )
 
     def forward(self, x):
-        return self.block(x)
+        #batch_size,C,H,W = x.shape
+
+        mean=[0.485, 0.456, 0.406]
+        std =[0.229, 0.224, 0.225]
+        x = torch.cat([
+            (x-mean[0])/std[0],
+            (x-mean[1])/std[1],
+            (x-mean[2])/std[2],
+        ],1)
 
 
-class UNet11(nn.Module):
-    def __init__(self, num_classes=1, num_filters=32, pretrained=False):
-        """
-        :param num_classes:
-        :param num_filters:
-        :param pretrained:
-            False - no pre-trained network is used
-            True  - encoder is pre-trained with VGG11
-        """
-        super().__init__()
-        self.pool = nn.MaxPool2d(2, 2)
+        x = self.conv1(x)
+        x = F.max_pool2d(x, kernel_size=2, stride=2)
 
-        self.encoder = models.vgg11(pretrained=pretrained).features
-
-        self.relu = self.encoder[1]
-        self.conv1 = self.encoder[0]
-        self.conv2 = self.encoder[3]
-        self.conv3s = self.encoder[6]
-        self.conv3 = self.encoder[8]
-        self.conv4s = self.encoder[11]
-        self.conv4 = self.encoder[13]
-        self.conv5s = self.encoder[16]
-        self.conv5 = self.encoder[18]
-
-        self.center = DecoderBlock(num_filters * 8 * 2, num_filters * 8 * 2, num_filters * 8)
-        self.dec5 = DecoderBlock(num_filters * (16 + 8), num_filters * 8 * 2, num_filters * 8)
-        self.dec4 = DecoderBlock(num_filters * (16 + 8), num_filters * 8 * 2, num_filters * 4)
-        self.dec3 = DecoderBlock(num_filters * (8 + 4), num_filters * 4 * 2, num_filters * 2)
-        self.dec2 = DecoderBlock(num_filters * (4 + 2), num_filters * 2 * 2, num_filters)
-        self.dec1 = ConvRelu(num_filters * (2 + 1), num_filters)
-
-        self.final = nn.Conv2d(num_filters, num_classes, kernel_size=1)
-
-    def forward(self, x):
-        conv1 = self.relu(self.conv1(x))
-        conv2 = self.relu(self.conv2(self.pool(conv1)))
-        conv3s = self.relu(self.conv3s(self.pool(conv2)))
-        conv3 = self.relu(self.conv3(conv3s))
-        conv4s = self.relu(self.conv4s(self.pool(conv3)))
-        conv4 = self.relu(self.conv4(conv4s))
-        conv5s = self.relu(self.conv5s(self.pool(conv4)))
-        conv5 = self.relu(self.conv5(conv5s))
-
-        center = self.center(self.pool(conv5))
-
-        dec5 = self.dec5(torch.cat([center, conv5], 1))
-        dec4 = self.dec4(torch.cat([dec5, conv4], 1))
-        dec3 = self.dec3(torch.cat([dec4, conv3], 1))
-        dec2 = self.dec2(torch.cat([dec3, conv2], 1))
-        dec1 = self.dec1(torch.cat([dec2, conv1], 1))
-        return self.final(dec1)
+        e2 = self.encoder2( x)  #; print('e2',e2.size())
+        e3 = self.encoder3(e2)  #; print('e3',e3.size())
+        e4 = self.encoder4(e3)  #; print('e4',e4.size())
+        e5 = self.encoder5(e4)  #; print('e5',e5.size())
 
 
-def unet11(pretrained=False, **kwargs):
-    """
-    pretrained:
-            False - no pre-trained network is used
-            True  - encoder is pre-trained with VGG11
-            carvana - all weights are pre-trained on
-                Kaggle: Carvana dataset https://www.kaggle.com/c/carvana-image-masking-challenge
-    """
-    model = UNet11(pretrained=pretrained, **kwargs)
+        #f = F.max_pool2d(e5, kernel_size=2, stride=2 )  #; print(f.size())
+        #f = F.upsample(f, scale_factor=2, mode='bilinear', align_corners=True)#False
+        #f = self.center(f)                       #; print('center',f.size())
+        f = self.center(e5)
+         
+        f = self.decoder5(torch.cat([f, e5], 1))  #; print('d5',f.size())
+        f = self.decoder4(torch.cat([f, e4], 1))  #; print('d4',f.size())
+        f = self.decoder3(torch.cat([f, e3], 1))  #; print('d3',f.size())
+        f = self.decoder2(torch.cat([f, e2], 1))  #; print('d2',f.size())
+        f = self.decoder1(f)                      # ; print('d1',f.size())
 
-    if pretrained == 'carvana':
-        state = torch.load('TernausNet.pt')
-        model.load_state_dict(state['model'])
-    return model
+        #f = F.dropout2d(f, p=0.20)
+        logit = self.logit(f)                     #; print('logit',logit.size())
+        return logit
 
+    ##-----------------------------------------------------------------
+    def criterion(self, logit, truth ):
 
-class DecoderBlockV2(nn.Module):
-    def __init__(self, in_channels, middle_channels, out_channels, is_deconv=True):
-        super(DecoderBlockV2, self).__init__()
-        self.in_channels = in_channels
+        #loss = PseudoBCELoss2d()(logit, truth)
+        #loss = FocalLoss2d()(logit, truth, type='sigmoid')
+        loss = RobustFocalLoss2d()(logit, truth, type='sigmoid')
+        return loss
 
-        if is_deconv:
-            """
-                Paramaters for Deconvolution were chosen to avoid artifacts, following
-                link https://distill.pub/2016/deconv-checkerboard/
-            """
+    # def criterion(self,logit, truth):
+    #
+    #     loss = F.binary_cross_entropy_with_logits(logit, truth)
+    #     return loss
 
-            self.block = nn.Sequential(
-                ConvRelu(in_channels, middle_channels),
-                nn.ConvTranspose2d(middle_channels, out_channels, kernel_size=4, stride=2,
-                                   padding=1),
-                nn.ReLU(inplace=True)
-            )
+    def metric(self, logit, truth, threshold=0.5 ):
+        prob = torch.sigmoid(logit)
+        dice = accuracy(prob, truth, threshold=threshold, is_average=True)
+        return dice
+
+    def set_mode(self, mode ):
+        self.mode = mode
+        if mode in ['eval', 'valid', 'test']:
+            self.eval()
+        elif mode in ['train']:
+            self.train()
         else:
-            self.block = nn.Sequential(
-                nn.Upsample(scale_factor=2, mode='bilinear'),
-                ConvRelu(in_channels, middle_channels),
-                ConvRelu(middle_channels, out_channels),
-            )
-
-    def forward(self, x):
-        return self.block(x)
-
-
-class AlbuNet(nn.Module):
-    """
-        UNet (https://arxiv.org/abs/1505.04597) with Resnet34(https://arxiv.org/abs/1512.03385) encoder
-
-        Proposed by Alexander Buslaev: https://www.linkedin.com/in/al-buslaev/
-
-        """
-
-    def __init__(self, num_classes=1, num_filters=32, pretrained=False, is_deconv=False):
-        """
-        :param num_classes:
-        :param num_filters:
-        :param pretrained:
-            False - no pre-trained network is used
-            True  - encoder is pre-trained with resnet34
-        :is_deconv:
-            False: bilinear interpolation is used in decoder
-            True: deconvolution is used in decoder
-        """
-        super().__init__()
-        self.num_classes = num_classes
-
-        self.pool = nn.MaxPool2d(2, 2)
-
-        self.encoder = torchvision.models.resnet34(pretrained=pretrained)
-
-        self.relu = nn.ReLU(inplace=True)
-
-        self.conv1 = nn.Sequential(self.encoder.conv1,
-                                   self.encoder.bn1,
-                                   self.encoder.relu,
-                                   self.pool)
-
-        self.conv2 = self.encoder.layer1
-
-        self.conv3 = self.encoder.layer2
-
-        self.conv4 = self.encoder.layer3
-
-        self.conv5 = self.encoder.layer4
-
-        self.center = DecoderBlockV2(512, num_filters * 8 * 2, num_filters * 8, is_deconv)
-
-        self.dec5 = DecoderBlockV2(512 + num_filters * 8, num_filters * 8 * 2, num_filters * 8, is_deconv)
-        self.dec4 = DecoderBlockV2(256 + num_filters * 8, num_filters * 8 * 2, num_filters * 8, is_deconv)
-        self.dec3 = DecoderBlockV2(128 + num_filters * 8, num_filters * 4 * 2, num_filters * 2, is_deconv)
-        self.dec2 = DecoderBlockV2(64 + num_filters * 2, num_filters * 2 * 2, num_filters * 2 * 2, is_deconv)
-        self.dec1 = DecoderBlockV2(num_filters * 2 * 2, num_filters * 2 * 2, num_filters, is_deconv)
-        self.dec0 = ConvRelu(num_filters, num_filters)
-        self.final = nn.Conv2d(num_filters, num_classes, kernel_size=1)
-
-    def forward(self, x):
-        conv1 = self.conv1(x)
-        conv2 = self.conv2(conv1)
-        conv3 = self.conv3(conv2)
-        conv4 = self.conv4(conv3)
-        conv5 = self.conv5(conv4)
-
-        center = self.center(self.pool(conv5))
-
-        dec5 = self.dec5(torch.cat([center, conv5], 1))
-
-        dec4 = self.dec4(torch.cat([dec5, conv4], 1))
-        dec3 = self.dec3(torch.cat([dec4, conv3], 1))
-        dec2 = self.dec2(torch.cat([dec3, conv2], 1))
-        dec1 = self.dec1(dec2)
-        dec0 = self.dec0(dec1)
-
-        return self.final(dec0)
-
-
-class UNetVGG16(nn.Module):
-    """PyTorch U-Net model using VGG16 encoder.
-
-    UNet: https://arxiv.org/abs/1505.04597
-    VGG: https://arxiv.org/abs/1409.1556
-    Proposed by Vladimir Iglovikov and Alexey Shvets: https://github.com/ternaus/TernausNet
-
-    Args:
-            num_classes (int): Number of output classes.
-            num_filters (int, optional): Number of filters in the last layer of decoder. Defaults to 32.
-            dropout_2d (float, optional): Probability factor of dropout layer before output layer. Defaults to 0.2.
-            pretrained (bool, optional):
-                False - no pre-trained weights are being used.
-                True  - VGG encoder is pre-trained on ImageNet.
-                Defaults to False.
-            is_deconv (bool, optional):
-                False: bilinear interpolation is used in decoder.
-                True: deconvolution is used in decoder.
-                Defaults to False.
-
-    """
-
-    def __init__(self, num_classes=1, num_filters=32, dropout_2d=0.2, pretrained=False, is_deconv=False):
-        super().__init__()
-        self.num_classes = num_classes
-        self.dropout_2d = dropout_2d
-
-        self.pool = nn.MaxPool2d(2, 2)
-
-        if pretrained=="custom":
-            pretrained_model=torch.load("custom_pretrained_VGG16.pth")
-
-            custom_model = torchvision.models.vgg16(pretrained=False)
-            num_features = custom_model.classifier[6].in_features
-            features = list(custom_model.classifier.children())[:-1] # Remove last layer
-            features.extend([nn.Linear(num_features, 6)]) # Add our layer with 6 outputs
-            custom_model.classifier = nn.Sequential(*features) # Replace the model classifier
-            custom_model.load_state_dict(pretrained_model)
-            self.encoder = custom_model.features
-        else:
-            self.encoder = torchvision.models.vgg16(pretrained=pretrained).features
-
-        self.relu = nn.ReLU(inplace=True)
-
-        self.conv1 = nn.Sequential(self.encoder[0],
-                                   self.relu,
-                                   self.encoder[2],
-                                   self.relu)
-
-        self.conv2 = nn.Sequential(self.encoder[5],
-                                   self.relu,
-                                   self.encoder[7],
-                                   self.relu)
-
-        self.conv3 = nn.Sequential(self.encoder[10],
-                                   self.relu,
-                                   self.encoder[12],
-                                   self.relu,
-                                   self.encoder[14],
-                                   self.relu)
-
-        self.conv4 = nn.Sequential(self.encoder[17],
-                                   self.relu,
-                                   self.encoder[19],
-                                   self.relu,
-                                   self.encoder[21],
-                                   self.relu)
-
-        self.conv5 = nn.Sequential(self.encoder[24],
-                                   self.relu,
-                                   self.encoder[26],
-                                   self.relu,
-                                   self.encoder[28],
-                                   self.relu)
-
-        self.center = DecoderBlockV2(512, num_filters * 8 * 2, num_filters * 8, is_deconv)
-
-        self.dec5 = DecoderBlockV2(512 + num_filters * 8, num_filters * 8 * 2, num_filters * 8, is_deconv)
-        self.dec4 = DecoderBlockV2(512 + num_filters * 8, num_filters * 8 * 2, num_filters * 8, is_deconv)
-        self.dec3 = DecoderBlockV2(256 + num_filters * 8, num_filters * 4 * 2, num_filters * 2, is_deconv)
-        self.dec2 = DecoderBlockV2(128 + num_filters * 2, num_filters * 2 * 2, num_filters, is_deconv)
-        self.dec1 = ConvRelu(64 + num_filters, num_filters)
-        self.final = nn.Conv2d(num_filters, num_classes, kernel_size=1)
-
-    def forward(self, x):
-        conv1 = self.conv1(x)
-        conv2 = self.conv2(self.pool(conv1))
-        conv3 = self.conv3(self.pool(conv2))
-        conv4 = self.conv4(self.pool(conv3))
-        conv5 = self.conv5(self.pool(conv4))
-
-        center = self.center(self.pool(conv5))
-
-        dec5 = self.dec5(torch.cat([center, conv5], 1))
-
-        dec4 = self.dec4(torch.cat([dec5, conv4], 1))
-        dec3 = self.dec3(torch.cat([dec4, conv3], 1))
-        dec2 = self.dec2(torch.cat([dec3, conv2], 1))
-        dec1 = self.dec1(torch.cat([dec2, conv1], 1))
-
-        return self.final(F.dropout2d(dec1, p=self.dropout_2d))
-
-
-class UNetResNet(nn.Module):
-    """PyTorch U-Net model using ResNet(34, 101 or 152) encoder.
-
-    UNet: https://arxiv.org/abs/1505.04597
-    ResNet: https://arxiv.org/abs/1512.03385
-    Proposed by Alexander Buslaev: https://www.linkedin.com/in/al-buslaev/
-
-    Args:
-            encoder_depth (int): Depth of a ResNet encoder (34, 101 or 152).
-            num_classes (int): Number of output classes.
-            num_filters (int, optional): Number of filters in the last layer of decoder. Defaults to 32.
-            dropout_2d (float, optional): Probability factor of dropout layer before output layer. Defaults to 0.2.
-            pretrained (bool, optional):
-                False - no pre-trained weights are being used.
-                True  - ResNet encoder is pre-trained on ImageNet.
-                Defaults to False.
-            is_deconv (bool, optional):
-                False: bilinear interpolation is used in decoder.
-                True: deconvolution is used in decoder.
-                Defaults to False.
-
-    """
-
-    def __init__(self, encoder_depth, num_classes, num_filters=32, dropout_2d=0.2,
-                 pretrained=False, is_deconv=False):
-        super().__init__()
-        self.num_classes = num_classes
-        self.dropout_2d = dropout_2d
-
-        if encoder_depth == 34:
-            if pretrained=="custom":
-                pretrained_model=torch.load("custom_pretrained_RESNET34.pth")
-
-                custom_model = models.resnet34(pretrained=True)
-                custom_model.fc = nn.Linear(custom_model.fc.in_features, 2)
-                custom_model.load_state_dict(pretrained_model)
-                self.encoder = custom_model
-                bottom_channel_nr = 512
-            else:
-                self.encoder = torchvision.models.resnet34(pretrained=pretrained)
-                bottom_channel_nr = 512
-
-        elif encoder_depth == 101:
-            self.encoder = torchvision.models.resnet101(pretrained=pretrained)
-            bottom_channel_nr = 2048
-        elif encoder_depth == 152:
-            self.encoder = torchvision.models.resnet152(pretrained=pretrained)
-            bottom_channel_nr = 2048
-        else:
-            raise NotImplementedError('only 34, 101, 152 version of Resnet are implemented')
-
-        self.pool = nn.MaxPool2d(2, 2)
-
-        self.relu = nn.ReLU(inplace=True)
-
-        self.conv1 = nn.Sequential(self.encoder.conv1,
-                                   self.encoder.bn1,
-                                   self.encoder.relu,
-                                   self.pool)
-
-        self.conv2 = self.encoder.layer1
-
-        self.conv3 = self.encoder.layer2
-
-        self.conv4 = self.encoder.layer3
-
-        self.conv5 = self.encoder.layer4
-
-        self.center = DecoderBlockV2(bottom_channel_nr, num_filters * 8 * 2, num_filters * 8, is_deconv)
-        self.dec5 = DecoderBlockV2(bottom_channel_nr + num_filters * 8, num_filters * 8 * 2, num_filters * 8, is_deconv)
-        self.dec4 = DecoderBlockV2(bottom_channel_nr // 2 + num_filters * 8, num_filters * 8 * 2, num_filters * 8,
-                                   is_deconv)
-        self.dec3 = DecoderBlockV2(bottom_channel_nr // 4 + num_filters * 8, num_filters * 4 * 2, num_filters * 2,
-                                   is_deconv)
-        self.dec2 = DecoderBlockV2(bottom_channel_nr // 8 + num_filters * 2, num_filters * 2 * 2, num_filters * 2 * 2,
-                                   is_deconv)
-        self.dec1 = DecoderBlockV2(num_filters * 2 * 2, num_filters * 2 * 2, num_filters, is_deconv)
-        self.dec0 = ConvRelu(num_filters, num_filters)
-        self.final = nn.Conv2d(num_filters, num_classes, kernel_size=1)
-
-    def forward(self, x):
-        conv1 = self.conv1(x)
-        conv2 = self.conv2(conv1)
-        conv3 = self.conv3(conv2)
-        conv4 = self.conv4(conv3)
-        conv5 = self.conv5(conv4)
-
-        pool = self.pool(conv5)
-        center = self.center(pool)
-
-        dec5 = self.dec5(torch.cat([center, conv5], 1))
-
-        dec4 = self.dec4(torch.cat([dec5, conv4], 1))
-        dec3 = self.dec3(torch.cat([dec4, conv3], 1))
-        dec2 = self.dec2(torch.cat([dec3, conv2], 1))
-        dec1 = self.dec1(dec2)
-        dec0 = self.dec0(dec1)
-
-        return self.final(F.dropout2d(dec0, p=self.dropout_2d))
-
-class double_conv(nn.Module):
-    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1):
-        super(double_conv, self).__init__()
-        self.conv = nn.Sequential(
-                    nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size,
-                              stride=stride, padding=padding),
-                    nn.BatchNorm2d(out_channels),
-                    nn.ReLU(inplace=True),
-                    nn.Conv2d(out_channels, out_channels, kernel_size=kernel_size,
-                              stride=stride, padding=padding),
-                    nn.BatchNorm2d(out_channels),
-                    nn.ReLU(inplace=True))
-        
-    def forward(self, x):
-        x = self.conv(x)
-        return x
-        
-class Unet(nn.Module):
+            raise NotImplementedError
+
+
+SaltNet = UNetResNet34
+
+# Sanity Check
+if __name__ == '__main__':
+    print( '%s: calling main function ... ' % os.path.basename(__file__))
+
+    batch_size = 8
+    C,H,W = 1, 128, 128
+
+    input = np.random.uniform(0,1, (batch_size,C,H,W)).astype(np.float32)
+    truth = np.random.choice (2,   (batch_size,C,H,W)).astype(np.float32)
+
+    #------------
+    if torch.cuda.is_available():
+        input = torch.from_numpy(input).float().cuda()
+        truth = torch.from_numpy(truth).float().cuda()
+        net = SaltNet().cuda()
+    else:
+        input = torch.from_numpy(input).float()
+        truth = torch.from_numpy(truth).float()
+        net = SaltNet()
+    #---
     
-    def __init__(self):
-        super(Unet, self).__init__()
-        
-        # Input 128x128x1
-        
-        #Contracting Path
-        
-        #(Double) Convolution 1        
-        self.double_conv1 = double_conv(1, start_fm, 3, 1, 1)
-        #Max Pooling 1
-        self.maxpool1 = nn.MaxPool2d(kernel_size=2)
-        
-        #Convolution 2
-        self.double_conv2 = double_conv(start_fm, start_fm * 2, 3, 1, 1)
-        #Max Pooling 2
-        self.maxpool2 = nn.MaxPool2d(kernel_size=2)
-        
-        #Convolution 3
-        self.double_conv3 = double_conv(start_fm * 2, start_fm * 4, 3, 1, 1)
-        #Max Pooling 3
-        self.maxpool3 = nn.MaxPool2d(kernel_size=2)
-        
-        #Convolution 4
-        self.double_conv4 = double_conv(start_fm * 4, start_fm * 8, 3, 1, 1)
-        #Max Pooling 4
-        self.maxpool4 = nn.MaxPool2d(kernel_size=2)
-        
-        #Convolution 5
-        self.double_conv5 = double_conv(start_fm * 8, start_fm * 16, 3, 1, 1)
-        
-        #Transposed Convolution 4
-        self.t_conv4 = nn.ConvTranspose2d(start_fm * 16, start_fm * 8, 2, 2)
-        # Expanding Path Convolution 4 
-        self.ex_double_conv4 = double_conv(start_fm * 16, start_fm * 8, 3, 1, 1)
-        
-        #Transposed Convolution 3
-        self.t_conv3 = nn.ConvTranspose2d(start_fm * 8, start_fm * 4, 2, 2)
-        #Convolution 3
-        self.ex_double_conv3 = double_conv(start_fm * 8, start_fm * 4, 3, 1, 1)
-        
-        #Transposed Convolution 2
-        self.t_conv2 = nn.ConvTranspose2d(start_fm * 4, start_fm * 2, 2, 2)
-        #Convolution 2
-        self.ex_double_conv2 = double_conv(start_fm * 4, start_fm * 2, 3, 1, 1)
-        
-        #Transposed Convolution 1
-        self.t_conv1 = nn.ConvTranspose2d(start_fm * 2, start_fm, 2, 2)
-        #Convolution 1
-        self.ex_double_conv1 = double_conv(start_fm * 2, start_fm, 3, 1, 1)
-        
-        # One by One Conv
-        self.one_by_one = nn.Conv2d(start_fm, 1, 1, 1, 0)
-        #self.final_act = nn.Sigmoid()
-        
-        
-    def forward(self, inputs):
-        # Contracting Path
-        conv1 = self.double_conv1(inputs)
-        maxpool1 = self.maxpool1(conv1)
+    print("Set Model to Train")
+    net.set_mode('train')
+    # print(net)
+    # exit(0)
 
-        conv2 = self.double_conv2(maxpool1)
-        maxpool2 = self.maxpool2(conv2)
+    logit = net(input)
+    loss  = net.criterion(logit, truth)
+    dice  = net.metric(logit, truth)
 
-        conv3 = self.double_conv3(maxpool2)
-        maxpool3 = self.maxpool3(conv3)
+    print('loss : %0.8f'%loss.item())
+    print('dice : %0.8f'%dice.item())
+    print('')
 
-        conv4 = self.double_conv4(maxpool3)
-        maxpool4 = self.maxpool4(conv4)
-            
-        # Bottom
-        conv5 = self.double_conv5(maxpool4)
-        
-        # Expanding Path
-        t_conv4 = self.t_conv4(conv5)
-        cat4 = torch.cat([conv4 ,t_conv4], 1)
-        ex_conv4 = self.ex_double_conv4(cat4)
-        
-        t_conv3 = self.t_conv3(ex_conv4)
-        cat3 = torch.cat([conv3 ,t_conv3], 1)
-        ex_conv3 = self.ex_double_conv3(cat3)
+    # dummy sgd to see if it can converge ...
+    optimizer = optim.SGD(filter(lambda p: p.requires_grad, net.parameters()),
+                      lr=0.1, momentum=0.9, weight_decay=0.0001)
 
-        t_conv2 = self.t_conv2(ex_conv3)
-        cat2 = torch.cat([conv2 ,t_conv2], 1)
-        ex_conv2 = self.ex_double_conv2(cat2)
-        
-        t_conv1 = self.t_conv1(ex_conv2)
-        cat1 = torch.cat([conv1 ,t_conv1], 1)
-        ex_conv1 = self.ex_double_conv1(cat1)
-        
-        one_by_one = self.one_by_one(ex_conv1)
-        
-        return one_by_one
+    #optimizer = optim.Adam(net.parameters(), lr=0.001)
+
+    i=0
+    optimizer.zero_grad()
+    while i<=100:
+
+        logit = net(input)
+        loss  = net.criterion(logit, truth)
+        dice  = net.metric(logit, truth)
+
+        loss.backward()
+        optimizer.step()
+        optimizer.zero_grad()
+
+        if i%20==0:
+            print('[%05d] loss, dice  :  %0.5f,%0.5f'%(i, loss.item(),dice.item()))
+        i = i+1
+
+    print( 'sucessful!')
