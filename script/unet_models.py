@@ -169,7 +169,6 @@ if __name__ == '__main__':
 
     input = np.random.uniform(0,1, (batch_size,C,H,W)).astype(np.float32)
     truth = np.random.choice (2,   (batch_size,C,H,W)).astype(np.float32)
-
     #------------
     if torch.cuda.is_available():
         input = torch.from_numpy(input).float().cuda()
@@ -185,7 +184,6 @@ if __name__ == '__main__':
     net.set_mode('train')
     # print(net)
     # exit(0)
-
     logit = net(input)
     loss  = net.criterion(logit, truth)
     dice  = net.metric(logit, truth)
