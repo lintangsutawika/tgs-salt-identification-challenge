@@ -141,6 +141,8 @@ train_idx, valid_idx, SaltLevel_train, SaltLevel_valid = train_test_split(
     test_size=0.1, stratify=SaltLevel.salt_class)
 
 sss = StratifiedShuffleSplit(n_splits=10, test_size=0.1)
+
+
 # for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'], SaltLevel['salt_class'])):
 
 # sns.distplot(SaltLevel.salt_class.iloc[train_idx], label="Train")
@@ -193,9 +195,9 @@ for e in range(epoch):
 
             # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-            loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            # loss += L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)*0.25
+            # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+            loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+            # loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
             # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
             
             train_loss.append(loss.item())
@@ -231,20 +233,17 @@ for e in range(epoch):
 
             # iou = accuracy(prob, masks, threshold=0.5, is_average=True)
             iou = do_kaggle_metric(prob, truth, threshold=0.5)
-
             val_iou.append(iou)
 
             # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-            loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            # loss += L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)*0.25
+            # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+            loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+            # loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
             # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
 
             val_loss.append(loss.item())
-
             pbar.set_description("Loss: %.3f, IoU: %.3f, Progress" % (loss, iou))
-
     print("Epoch: %d, Train Loss: %.3f, Train IoU: %.3f,Val Loss: %.3f, Val IoU: %.3f" % (e, np.mean(train_loss), np.mean(train_iou), np.mean(val_loss), np.mean(val_iou)))
 
 model.eval()
