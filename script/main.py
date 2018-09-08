@@ -138,7 +138,7 @@ if torch.cuda.is_available():
 train_idx, valid_idx, SaltLevel_train, SaltLevel_valid = train_test_split(
     SaltLevel.index,
     SaltLevel,
-    test_size=0.1)#, stratify=SaltLevel.salt_class)
+    test_size=0.1, stratify=SaltLevel.salt_class)
 
 sss = StratifiedShuffleSplit(n_splits=10, test_size=0.1)
 # for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'], SaltLevel['salt_class'])):
