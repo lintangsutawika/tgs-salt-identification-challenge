@@ -56,11 +56,12 @@ SaltLevel = pd.DataFrame(data={'train_ids':train_ids, 'salt_class':Y_target})
 
 class saltIDDataset(torch.utils.data.Dataset):
 
-    def __init__(self, path_images, list_images, transforms=False, train=True):
+    def __init__(self, path_images, list_images, transforms=False, train=True, tta=True):
         self.train = train
         self.path_images = path_images
         self.list_images = list_images
         self.transforms = transforms
+        self.tta = tta
 
     def __len__(self):
         return len(self.list_images)
@@ -111,16 +112,22 @@ class saltIDDataset(torch.utils.data.Dataset):
 
         else:
             mask = np.zeros([128,128])
-            if self.transforms is True:
-                # image = self.transforms(Image.fromarray(image))
-                pass
 
-            # image, mask = do_resize2(image, mask, 128, 128)
             image, mask = do_resize2(image, mask, 101, 101)
             image, mask = do_center_pad_to_factor2(image, mask)
+
+            if self.tta == True:            
+                image_flip, mask_flip = do_horizontal_flip2(image, mask)
+                image_flip = np.expand_dims(image_flip, axis=2)
+                image_flip = transformTensor(image_flip).float()
+            
             image = np.expand_dims(image, axis=2)
             image = transformTensor(image).float()
-            return (image, mask)
+
+            if self.tta == True:
+                return ((image, image_flip), (mask, mask_flip))
+            else:
+                return (image, mask)
 
 model = SaltNet()
 # model = UNet11()
@@ -131,7 +138,7 @@ if torch.cuda.is_available():
 train_idx, valid_idx, SaltLevel_train, SaltLevel_valid = train_test_split(
     SaltLevel.index,
     SaltLevel,
-    test_size=0.1, stratify=SaltLevel.salt_class)
+    test_size=0.1)#, stratify=SaltLevel.salt_class)
 
 sss = StratifiedShuffleSplit(n_splits=10, test_size=0.1)
 # for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'], SaltLevel['salt_class'])):
@@ -149,7 +156,7 @@ train_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_train,
                                            shuffle=True,
                                            num_workers=1)
 
-salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False)
+salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train=False)
 val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid, 
                                            batch_size=8, 
                                            shuffle=True,
@@ -204,9 +211,20 @@ for e in range(epoch):
     model.eval()
     with tqdm(val_loader) as pbar:
         for images, masks in pbar:
-            images = images.cuda()
-            masks = masks.cuda()
-            y_pred = model(Variable(images))
+            if len(images) == 2:
+                image_ori, image_rev = images
+                mask_ori, mask_rev = masks
+                if torch.cuda.is_available():
+                    image_ori, images_rev, mask_ori, mask_rev = image_ori.cuda(), image_rev.cuda(), mask_ori.cuda(), mask_rev.cuda()
+
+                y_pred_rev = model(Variable(image_rev)).flip(3)
+                y_pred_ori = model(Variable(image_ori))
+                y_pred = (y_pred_ori+ y_pred_rev)/2
+                masks = mask_ori
+            else:
+                if torch.cuda.is_available():
+                    images, masks = images.cuda(), masks.cuda()
+                y_pred = model(Variable(images))
 
             prob = torch.sigmoid(y_pred).cpu().data.numpy()[:,:,13:-14,13:-14]
             truth = masks.cpu().data.numpy()[:,:,13:-14,13:-14]
@@ -234,21 +252,27 @@ y_pred_true_pairs = []
 img_list = []
 with tqdm(val_loader) as pbar:
     for images, masks in pbar:
-        if torch.cuda.is_available():
-            images = Variable(images.cuda())
-            masks = Variable(masks.cuda())
-        else:
-            images = Variable(images)
-            masks = Variable(masks)
+        if len(images) == 2:
+            image_ori, image_rev = images
+            mask_ori, mask_rev = masks
+            if torch.cuda.is_available():
+                image_ori, images_rev, mask_ori, mask_rev = image_ori.cuda(), image_rev.cuda(), mask_ori.cuda(), mask_rev.cuda()
 
-        y_preds = model(images)
-        # prob = torch.sigmoid(y_preds)
+            y_pred_rev = model(Variable(image_rev)).flip(3)
+            y_pred_ori = model(Variable(image_ori))
+            y_pred = (y_pred_ori+ y_pred_rev)/2
+            masks = mask_ori
+        else:
+            if torch.cuda.is_available():
+                images, masks = images.cuda(), masks.cuda()
+            y_pred = model(Variable(images))
+
         for i, img in enumerate(images):
             img_list.append(img)
-            y_pred = y_preds[i] 
-            y_pred = torch.sigmoid(y_pred)
-            y_pred = y_pred.cpu().data.numpy()
-            y_pred_true_pairs.append((y_pred, masks[i].cpu().data.numpy()))
+            y_pred_one = y_pred[i] 
+            y_pred_one = torch.sigmoid(y_pred_one)
+            y_pred_one = y_pred_one.cpu().data.numpy()
+            y_pred_true_pairs.append((y_pred_one, masks[i].cpu().data.numpy()))
 
 thresholds = []
 for threshold in np.linspace(0, 1, 51):
@@ -286,19 +310,28 @@ test_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_test,
 model.eval()
 y_pred_test = []
 for images, mask in tqdm(test_loader):
-    if torch.cuda.is_available():
-        images = Variable(images.cuda())
-    else:
-        images = Variable(images)
+    if len(images) == 2:
+        image_ori, image_rev = images
+        mask_ori, mask_rev = masks
+        if torch.cuda.is_available():
+            image_ori, images_rev, mask_ori, mask_rev = image_ori.cuda(), image_rev.cuda(), mask_ori.cuda(), mask_rev.cuda()
 
-    y_preds = model(images)
+        y_pred_rev = model(Variable(image_rev)).flip(3)
+        y_pred_ori = model(Variable(image_ori))
+        y_pred = (y_pred_ori+ y_pred_rev)/2
+        masks = mask_ori
+    else:
+        if torch.cuda.is_available():
+            images, masks = images.cuda(), masks.cuda()
+        y_pred = model(Variable(images))
+
     for i, _ in enumerate(images):
-        y_pred = y_preds[i] 
-        y_pred = torch.sigmoid(y_pred)
-        y_pred = y_pred.cpu().data.numpy()[0]
+        y_pred_one = y_preds[i] 
+        y_pred_one = torch.sigmoid(y_pred_one)
+        y_pred_one = y_pred_one.cpu().data.numpy()[0]
         # y_pred = cv2.resize(y_pred, (101, 101))
-        y_pred = y_pred[13:-14,13:-14]
-        y_pred_test.append(y_pred)
+        y_pred_one = y_pred_one[13:-14,13:-14]
+        y_pred_test.append(y_pred_one)
 
 binary_prediction = (y_pred_test > best_threshold).astype(int)
 
