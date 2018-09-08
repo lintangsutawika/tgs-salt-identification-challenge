@@ -167,8 +167,10 @@ for e in range(epoch):
     train_loss = []
     train_iou = []
 
-    for param in optimizer.param_groups:
-        param['lr'] = scheduler.get_rate(e, epoch)
+    # for param in optimizer.param_groups:
+    #     param['lr'] = scheduler.get_rate(e, epoch)
+    if e >= 100:
+        optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=0.0001)
 
     model.train()
     with tqdm(train_loader) as pbar:
@@ -184,9 +186,9 @@ for e in range(epoch):
 
             # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-            loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+            loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')*0.75
             # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            # loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
+            loss += L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)*0.25
             # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
             
             train_loss.append(loss.item())
@@ -216,9 +218,9 @@ for e in range(epoch):
 
             # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-            loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+            loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')*0.75
             # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            # loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
+            loss += L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)*0.25
             # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
 
             val_loss.append(loss.item())
@@ -295,7 +297,7 @@ for images, mask in tqdm(test_loader):
         y_pred = torch.sigmoid(y_pred)
         y_pred = y_pred.cpu().data.numpy()[0]
         # y_pred = cv2.resize(y_pred, (101, 101))
-        y_pred = y_pred[:,:,13:-14,13:-14]
+        y_pred = y_pred[13:-14,13:-14]
         y_pred_test.append(y_pred)
 
 binary_prediction = (y_pred_test > best_threshold).astype(int)
