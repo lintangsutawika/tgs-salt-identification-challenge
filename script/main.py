@@ -120,8 +120,13 @@ class saltIDDataset(torch.utils.data.Dataset):
                 image_flip, mask_flip = do_horizontal_flip2(image, mask)
                 image_flip = np.expand_dims(image_flip, axis=2)
                 image_flip = transformTensor(image_flip).float()
+
+                mask_flip = np.expand_dims(mask_flip, axis=2)
+                mask_flip = transformTensor(mask_flip).float()
             
             image = np.expand_dims(image, axis=2)
+            mask = np.expand_dims(mask, axis=2)
+
             image = transformTensor(image).float()
 
             if self.tta == True:
@@ -138,7 +143,7 @@ if torch.cuda.is_available():
 train_idx, valid_idx, SaltLevel_train, SaltLevel_valid = train_test_split(
     SaltLevel.index,
     SaltLevel,
-    test_size=0.1, stratify=SaltLevel.salt_class)
+    test_size=0.08, stratify=SaltLevel.salt_class)
 
 sss = StratifiedShuffleSplit(n_splits=10, test_size=0.1)
 
