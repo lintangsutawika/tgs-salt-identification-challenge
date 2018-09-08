@@ -217,7 +217,7 @@ for e in range(epoch):
                 image_ori, image_rev = images
                 mask_ori, mask_rev = masks
                 if torch.cuda.is_available():
-                    image_ori, images_rev, mask_ori, mask_rev = image_ori.cuda(), image_rev.cuda(), mask_ori.cuda(), mask_rev.cuda()
+                    image_ori, image_rev, mask_ori, mask_rev = image_ori.cuda(), image_rev.cuda(), mask_ori.cuda(), mask_rev.cuda()
 
                 y_pred_rev = model(Variable(image_rev)).flip(3)
                 y_pred_ori = model(Variable(image_ori))
@@ -255,7 +255,7 @@ with tqdm(val_loader) as pbar:
             image_ori, image_rev = images
             mask_ori, mask_rev = masks
             if torch.cuda.is_available():
-                image_ori, images_rev, mask_ori, mask_rev = image_ori.cuda(), image_rev.cuda(), mask_ori.cuda(), mask_rev.cuda()
+                image_ori, image_rev, mask_ori, mask_rev = image_ori.cuda(), image_rev.cuda(), mask_ori.cuda(), mask_rev.cuda()
 
             y_pred_rev = model(Variable(image_rev)).flip(3)
             y_pred_ori = model(Variable(image_ori))
@@ -313,7 +313,7 @@ for images, mask in tqdm(test_loader):
         image_ori, image_rev = images
         mask_ori, mask_rev = masks
         if torch.cuda.is_available():
-            image_ori, images_rev, mask_ori, mask_rev = image_ori.cuda(), image_rev.cuda(), mask_ori.cuda(), mask_rev.cuda()
+            image_ori, image_rev, mask_ori, mask_rev = image_ori.cuda(), image_rev.cuda(), mask_ori.cuda(), mask_rev.cuda()
 
         y_pred_rev = model(Variable(image_rev)).flip(3)
         y_pred_ori = model(Variable(image_ori))
