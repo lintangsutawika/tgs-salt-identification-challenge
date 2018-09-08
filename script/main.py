@@ -98,7 +98,6 @@ class saltIDDataset(torch.utils.data.Dataset):
                 image, mask = do_resize2(image, mask, 101, 101)
                 image, mask = do_center_pad_to_factor2(image, mask)
             else:
-                # image, mask = do_resize2(image, mask, 128, 128)
                 image, mask = do_resize2(image, mask, 101, 101)
                 image, mask = do_center_pad_to_factor2(image, mask)
 
@@ -175,8 +174,7 @@ val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid,
 
 epoch = 35
 learning_rate = 1e-2
-# loss_fn = torch.nn.BCEWithLogitsLoss()
-# loss_fn = RobustFocalLoss2d()
+
 # optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
 optimizer.zero_grad()
@@ -198,7 +196,7 @@ for e in range(epoch):
 
             prob = torch.sigmoid(y_pred).cpu().data.numpy()
             truth = masks.cpu().data.numpy()
-            # iou = accuracy(prob, masks, threshold=0.5, is_average=True)
+
             iou = do_kaggle_metric(prob, truth, threshold=0.5)
             train_iou.append(iou)
 
@@ -219,6 +217,7 @@ for e in range(epoch):
         
     val_loss = []
     val_iou = []
+    best_iou = 0.0
     model.eval()
     with tqdm(val_loader) as pbar:
         for images, masks in pbar:
@@ -240,9 +239,14 @@ for e in range(epoch):
             prob = torch.sigmoid(y_pred).cpu().data.numpy()[:,:,13:-14,13:-14]
             truth = masks.cpu().data.numpy()[:,:,13:-14,13:-14]
 
-            # iou = accuracy(prob, masks, threshold=0.5, is_average=True)
             iou = do_kaggle_metric(prob, truth, threshold=0.5)
             val_iou.append(iou)
+
+            if iou > best_iou:
+                best_iou = iou
+                torch.save(model.state_dict(), "model_checkpoint.pth")
+            else:
+                pass
 
             # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
@@ -255,6 +259,8 @@ for e in range(epoch):
             pbar.set_description("Loss: %.3f, IoU: %.3f, Progress" % (loss, iou))
     print("Epoch: %d, Train Loss: %.3f, Train IoU: %.3f,Val Loss: %.3f, Val IoU: %.3f" % (e, np.mean(train_loss), np.mean(train_iou), np.mean(val_loss), np.mean(val_iou)))
 
+print("Training Finished, Best IoU: %.3f" % (best_iou))
+model.load_state_dict(torch.load('model_checkpoint.pth'))
 model.eval()
 y_pred_true_pairs = []
 img_list = []
@@ -337,7 +343,6 @@ for images, mask in tqdm(test_loader):
         y_pred_one = y_preds[i] 
         y_pred_one = torch.sigmoid(y_pred_one)
         y_pred_one = y_pred_one.cpu().data.numpy()[0]
-        # y_pred = cv2.resize(y_pred, (101, 101))
         y_pred_one = y_pred_one[13:-14,13:-14]
         y_pred_test.append(y_pred_one)
 
