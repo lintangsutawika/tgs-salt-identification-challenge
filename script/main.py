@@ -155,7 +155,7 @@ val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid,
                                            shuffle=True,
                                            num_workers=1)
 
-epoch = 150
+epoch = 30
 learning_rate = 1e-2
 # loss_fn = torch.nn.BCEWithLogitsLoss()
 # loss_fn = RobustFocalLoss2d()
@@ -169,8 +169,8 @@ for e in range(epoch):
 
     # for param in optimizer.param_groups:
     #     param['lr'] = scheduler.get_rate(e, epoch)
-    if e >= 100:
-        optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=0.0001)
+    # if e >= 100:
+    #     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=0.0001)
 
     model.train()
     with tqdm(train_loader) as pbar:
@@ -186,9 +186,9 @@ for e in range(epoch):
 
             # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-            loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')*0.75
+            loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
             # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            loss += L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)*0.25
+            # loss += L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)*0.25
             # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
             
             train_loss.append(loss.item())
@@ -218,9 +218,9 @@ for e in range(epoch):
 
             # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-            loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')*0.75
+            loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
             # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            loss += L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)*0.25
+            # loss += L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)*0.25
             # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
 
             val_loss.append(loss.item())
