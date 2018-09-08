@@ -56,7 +56,7 @@ SaltLevel = pd.DataFrame(data={'train_ids':train_ids, 'salt_class':Y_target})
 
 class saltIDDataset(torch.utils.data.Dataset):
 
-    def __init__(self, path_images, list_images, transforms=False, train=True, tta=True):
+    def __init__(self, path_images, list_images, transforms=False, train="train", tta=True):
         self.train = train
         self.path_images = path_images
         self.list_images = list_images
@@ -69,7 +69,7 @@ class saltIDDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         image = cv2.imread(self.path_images + '/images/' + self.list_images[idx],cv2.IMREAD_GRAYSCALE).astype(np.float32)/255
         transformTensor = transforms.ToTensor()
-        if self.train:
+        if self.train == "train":
             mask = cv2.imread(self.path_images + '/masks/' + self.list_images[idx],cv2.IMREAD_GRAYSCALE).astype(np.float32)/255
             if self.transforms is True:
                 if np.random.rand() < 0.5:
@@ -111,7 +111,10 @@ class saltIDDataset(torch.utils.data.Dataset):
             return (image, mask)
 
         else:
-            mask = np.zeros([128,128])
+            if self.train == "valid":
+                mask = cv2.imread(self.path_images + '/masks/' + self.list_images[idx],cv2.IMREAD_GRAYSCALE).astype(np.float32)/255
+            else:
+                mask = np.zeros([128,128,1])
 
             image, mask = do_resize2(image, mask, 101, 101)
             image, mask = do_center_pad_to_factor2(image, mask)
@@ -157,13 +160,13 @@ sss = StratifiedShuffleSplit(n_splits=10, test_size=0.1)
 # plt.savefig('salt_class_{}.png'.format(cv_fold), dpi=400)
 # plt.close()
 
-salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True)
+salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train")
 train_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_train, 
                                            batch_size=24, 
                                            shuffle=True,
                                            num_workers=1)
 
-salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train=False)
+salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid")
 val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid, 
                                            batch_size=8, 
                                            shuffle=True,
@@ -305,7 +308,7 @@ plt.show()
 path_test = '../input/test'
 test_path_images = os.path.abspath(path_test + "/images/")
 test_ids = next(os.walk(test_path_images))[2]
-salt_ID_dataset_test = saltIDDataset(path_test, test_ids, transforms=False, train=False)
+salt_ID_dataset_test = saltIDDataset(path_test, test_ids, transforms=False, train="test")
 test_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_test, 
                                            batch_size=8, 
                                            shuffle=False,
