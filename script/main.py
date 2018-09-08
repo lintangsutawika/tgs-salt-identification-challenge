@@ -131,6 +131,7 @@ class saltIDDataset(torch.utils.data.Dataset):
             mask = np.expand_dims(mask, axis=2)
 
             image = transformTensor(image).float()
+            mask = transformTensor(mask).float()
 
             if self.tta == True:
                 return ((image, image_flip), (mask, mask_flip))
