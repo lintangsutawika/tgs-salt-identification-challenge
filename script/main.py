@@ -114,7 +114,7 @@ class saltIDDataset(torch.utils.data.Dataset):
             if self.train == "valid":
                 mask = cv2.imread(self.path_images + '/masks/' + self.list_images[idx],cv2.IMREAD_GRAYSCALE).astype(np.float32)/255
             else:
-                mask = np.zeros([128,128,1])
+                mask = np.zeros([128,128])
 
             image, mask = do_resize2(image, mask, 101, 101)
             image, mask = do_center_pad_to_factor2(image, mask)
@@ -173,7 +173,7 @@ val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid,
                                            shuffle=True,
                                            num_workers=1)
 
-epoch = 30
+epoch = 35
 learning_rate = 1e-2
 # loss_fn = torch.nn.BCEWithLogitsLoss()
 # loss_fn = RobustFocalLoss2d()
