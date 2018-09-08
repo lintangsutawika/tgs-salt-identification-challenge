@@ -1,6 +1,8 @@
 import os
 import cv2
 import numpy as np
+import random
+import math
 
 def do_resize2(image, mask, H, W):
     image = cv2.resize(image,dsize=(W,H))
@@ -81,15 +83,15 @@ def do_invert_intensity(image):
     image = np.clip(1-image,0,1)
     return image
 
-
-    image = image + alpha
+def do_brightness_shift(image, alpha=0.125):
+    image = alpha+image
     image = np.clip(image, 0, 1)
     return image
-
 
 def do_brightness_multiply(image, alpha=1):
     image = alpha*image
     image = np.clip(image, 0, 1)
+    return image
 
 #https://www.pyimagesearch.com/2015/10/05/opencv-gamma-correction/
 def do_gamma(image, gamma=1.0):

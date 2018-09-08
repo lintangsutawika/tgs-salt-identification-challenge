@@ -1,4 +1,6 @@
-from include import *
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 #https://github.com/marvis/pytorch-yolo2/blob/master/FocalLoss.py
 #https://github.com/unsky/focal-loss
@@ -74,7 +76,7 @@ class RobustFocalLoss2d(nn.Module):
             if class_weight is None:
                 class_weight = [1]*2 #[0.5, 0.5]
 
-            prob   = F.sigmoid(logit)
+            prob   = torch.sigmoid(logit)
             prob   = prob.view(-1, 1)
             prob   = torch.cat((1-prob, prob), 1)
             select = torch.FloatTensor(len(prob), 2).zero_()
