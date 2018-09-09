@@ -172,7 +172,7 @@ val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid,
                                            shuffle=True,
                                            num_workers=1)
 
-epoch = 35
+epoch = 40
 learning_rate = 1e-2
 
 # optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -242,12 +242,6 @@ for e in range(epoch):
             iou = do_kaggle_metric(prob, truth, threshold=0.5)
             val_iou.append(iou)
 
-            if iou > best_iou:
-                best_iou = iou
-                torch.save(model.state_dict(), "model_checkpoint.pth")
-            else:
-                pass
-
             # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
             # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
@@ -256,8 +250,15 @@ for e in range(epoch):
             # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
 
             val_loss.append(loss.item())
+
             pbar.set_description("Loss: %.3f, IoU: %.3f, Progress" % (loss, iou))
     print("Epoch: %d, Train Loss: %.3f, Train IoU: %.3f,Val Loss: %.3f, Val IoU: %.3f" % (e, np.mean(train_loss), np.mean(train_iou), np.mean(val_loss), np.mean(val_iou)))
+
+    if np.mean(val_iou) > best_iou:
+        best_iou = np.mean(val_iou)
+        torch.save(model.state_dict(), "model_checkpoint.pth")
+    else:
+        pass
 
 print("Training Finished, Best IoU: %.3f" % (best_iou))
 model.load_state_dict(torch.load('model_checkpoint.pth'))
@@ -323,7 +324,7 @@ test_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_test,
 
 model.eval()
 y_pred_test = []
-for images, mask in tqdm(test_loader):
+for images, masks in tqdm(test_loader):
     if len(images) == 2:
         image_ori, image_rev = images
         mask_ori, mask_rev = masks
