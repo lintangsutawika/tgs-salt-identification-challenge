@@ -137,133 +137,136 @@ class saltIDDataset(torch.utils.data.Dataset):
             else:
                 return (image, mask)
 
-model = SaltNet()
-# model = UNet11()
-model.train()
-if torch.cuda.is_available():
-    model.cuda()
-
 train_idx, valid_idx, SaltLevel_train, SaltLevel_valid = train_test_split(
     SaltLevel.index,
     SaltLevel,
     test_size=0.08, stratify=SaltLevel.salt_class)
 
-sss = StratifiedShuffleSplit(n_splits=10, test_size=0.1)
-
-
-# for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'], SaltLevel['salt_class'])):
-
-# sns.distplot(SaltLevel.salt_class.iloc[train_idx], label="Train")
-# sns.distplot(SaltLevel.salt_class.iloc[valid_idx], label="Valid")
-# plt.legend()
-# plt.title("Salt Class Stratified Split Fold: {}".format(cv_fold))
-# plt.savefig('salt_class_{}.png'.format(cv_fold), dpi=400)
-# plt.close()
-
-salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train")
-train_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_train, 
-                                           batch_size=24, 
-                                           shuffle=True,
-                                           num_workers=1)
-
-salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid")
-val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid, 
-                                           batch_size=8, 
-                                           shuffle=True,
-                                           num_workers=1)
-
-epoch = 40
-learning_rate = 1e-2
-
-# optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
-optimizer.zero_grad()
-scheduler = CyclicScheduler(base_lr=0.001, max_lr=0.01, step=5., mode='triangular2', gamma=1., scale_fn=None, scale_mode='cycle') ##exp_range ##triangular2
-best_iou = 0.0
-for e in range(epoch):
-    train_loss = []
-    train_iou = []
-
-    # for param in optimizer.param_groups:
-    #     param['lr'] = scheduler.get_rate(e, epoch)
-    # if e >= 100:
-    #     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=0.0001)
-
+fold_score = []
+sss = StratifiedShuffleSplit(n_splits=5, test_size=0.08)
+for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'], SaltLevel['salt_class'])):
+    model = SaltNet()
+    # model = UNet11()
     model.train()
-    with tqdm(train_loader) as pbar:
-        for images, masks in pbar: 
-            masks = masks.cuda()
-            y_pred = model(Variable(images).cuda())
+    if torch.cuda.is_available():
+        model.cuda()
 
-            prob = torch.sigmoid(y_pred).cpu().data.numpy()
-            truth = masks.cpu().data.numpy()
 
-            iou = do_kaggle_metric(prob, truth, threshold=0.5)
-            train_iou.append(iou)
+    fold_score.append([0.0])
+    # sns.distplot(SaltLevel.salt_class.iloc[train_idx], label="Train")
+    # sns.distplot(SaltLevel.salt_class.iloc[valid_idx], label="Valid")
+    # plt.legend()
+    # plt.title("Salt Class Stratified Split Fold: {}".format(cv_fold))
+    # plt.savefig('salt_class_{}.png'.format(cv_fold), dpi=400)
+    # plt.close()
 
-            # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
-            # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-            # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            # loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
-            # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
+    salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train")
+    train_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_train, 
+                                               batch_size=24, 
+                                               shuffle=True,
+                                               num_workers=1)
+
+    salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid")
+    val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid, 
+                                               batch_size=8, 
+                                               shuffle=True,
+                                               num_workers=1)
+
+    epoch = 40
+    learning_rate = 1e-2
+
+    # optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
+    optimizer.zero_grad()
+    scheduler = CyclicScheduler(base_lr=0.001, max_lr=0.01, step=5., mode='triangular2', gamma=1., scale_fn=None, scale_mode='cycle') ##exp_range ##triangular2
+    best_iou = 0.0
+    for e in range(epoch):
+        train_loss = []
+        train_iou = []
+
+        # for param in optimizer.param_groups:
+        #     param['lr'] = scheduler.get_rate(e, epoch)
+        # if e >= 100:
+        #     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=0.0001)
+
+        model.train()
+        with tqdm(train_loader) as pbar:
+            for images, masks in pbar: 
+                masks = masks.cuda()
+                y_pred = model(Variable(images).cuda())
+
+                prob = torch.sigmoid(y_pred).cpu().data.numpy()
+                truth = masks.cpu().data.numpy()
+
+                iou = do_kaggle_metric(prob, truth, threshold=0.5)
+                train_iou.append(iou)
+
+                # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
+                # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
+                # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+                loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+                # loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
+                # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
+                
+                train_loss.append(loss.item())
+
+                loss.backward()
+                optimizer.step()
+                optimizer.zero_grad()
+
+                pbar.set_description("Loss: %.3f, IoU: %.3f, Progress" % (loss, iou))
             
-            train_loss.append(loss.item())
+        val_loss = []
+        val_iou = []
+        model.eval()
+        with tqdm(val_loader) as pbar:
+            for images, masks in pbar:
+                if len(images) == 2:
+                    image_ori, image_rev = images
+                    mask_ori, mask_rev = masks
+                    if torch.cuda.is_available():
+                        image_ori, image_rev, mask_ori, mask_rev = image_ori.cuda(), image_rev.cuda(), mask_ori.cuda(), mask_rev.cuda()
 
-            loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
+                    y_pred_rev = model(Variable(image_rev)).flip(3)
+                    y_pred_ori = model(Variable(image_ori))
+                    y_pred = (y_pred_ori+ y_pred_rev)/2
+                    masks = mask_ori
+                else:
+                    if torch.cuda.is_available():
+                        images, masks = images.cuda(), masks.cuda()
+                    y_pred = model(Variable(images))
 
-            pbar.set_description("Loss: %.3f, IoU: %.3f, Progress" % (loss, iou))
-        
-    val_loss = []
-    val_iou = []
-    model.eval()
-    with tqdm(val_loader) as pbar:
-        for images, masks in pbar:
-            if len(images) == 2:
-                image_ori, image_rev = images
-                mask_ori, mask_rev = masks
-                if torch.cuda.is_available():
-                    image_ori, image_rev, mask_ori, mask_rev = image_ori.cuda(), image_rev.cuda(), mask_ori.cuda(), mask_rev.cuda()
+                prob = torch.sigmoid(y_pred).cpu().data.numpy()[:,:,13:-14,13:-14]
+                truth = masks.cpu().data.numpy()[:,:,13:-14,13:-14]
 
-                y_pred_rev = model(Variable(image_rev)).flip(3)
-                y_pred_ori = model(Variable(image_ori))
-                y_pred = (y_pred_ori+ y_pred_rev)/2
-                masks = mask_ori
-            else:
-                if torch.cuda.is_available():
-                    images, masks = images.cuda(), masks.cuda()
-                y_pred = model(Variable(images))
+                iou = do_kaggle_metric(prob, truth, threshold=0.5)
+                val_iou.append(iou)
 
-            prob = torch.sigmoid(y_pred).cpu().data.numpy()[:,:,13:-14,13:-14]
-            truth = masks.cpu().data.numpy()[:,:,13:-14,13:-14]
+                # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
+                # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
+                # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+                loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+                # loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
+                # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
 
-            iou = do_kaggle_metric(prob, truth, threshold=0.5)
-            val_iou.append(iou)
+                val_loss.append(loss.item())
 
-            # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
-            # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-            # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            # loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
-            # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
+                pbar.set_description("Loss: %.3f, IoU: %.3f, Progress" % (loss, iou))
+        validation_iou = np.mean(val_iou)
+        print("Epoch: %d, Train Loss: %.3f, Train IoU: %.3f,Val Loss: %.3f, Val IoU: %.3f" % (e, np.mean(train_loss), np.mean(train_iou), np.mean(val_loss), validation_iou))
 
-            val_loss.append(loss.item())
-
-            pbar.set_description("Loss: %.3f, IoU: %.3f, Progress" % (loss, iou))
-    validation_iou = np.mean(val_iou)
-    print("Epoch: %d, Train Loss: %.3f, Train IoU: %.3f,Val Loss: %.3f, Val IoU: %.3f" % (e, np.mean(train_loss), np.mean(train_iou), np.mean(val_loss), validation_iou))
-
-    if validation_iou > best_iou:
-        best_iou = validation_iou
-        torch.save(model.state_dict(), "model_checkpoint.pth")
-        print("Better validation, model saved")
-    else:
-        pass
+        if validation_iou > best_iou:
+            best_iou = validation_iou
+            torch.save(model.state_dict(), "model_checkpoint_fold{}.pth".format(cv_fold))
+            fold_score[cv_fold] = best_iou
+            print("Better validation, model saved")
+        else:
+            pass
 
 print("Training Finished, Best IoU: %.3f" % (best_iou))
-model.load_state_dict(torch.load('model_checkpoint.pth'))
+
+#Choose best fold
+model.load_state_dict(torch.load('model_checkpoint_fold{}.pth'.format(cv_fold.index(max(cv_fold)))))
 model.eval()
 y_pred_true_pairs = []
 img_list = []
@@ -287,9 +290,8 @@ with tqdm(val_loader) as pbar:
         for i, img in enumerate(images):
             img_list.append(img)
             y_pred_one = y_pred[i] 
-            y_pred_one = torch.sigmoid(y_pred_one)
-            y_pred_one = y_pred_one.cpu().data.numpy()
-            y_pred_true_pairs.append((y_pred_one, masks[i].cpu().data.numpy()))
+            y_pred_one = torch.sigmoid(y_pred_one).cpu().data.numpy()[:,13:-14,13:-14]
+            y_pred_true_pairs.append((y_pred_one, masks[i].cpu().data.numpy()[:,13:-14,13:-14]))
 
 thresholds = []
 for threshold in np.linspace(0, 1, 51):
@@ -306,14 +308,14 @@ thresholds = np.asarray(thresholds)
 best_threshold = thresholds[np.min(np.where(thresholds[:,1] == np.max(thresholds[:,1]))),0]
 print('threshold: {}'.format(best_threshold))
 
-plt.figure(figsize=(20,20))
-for j in range(10):
-    q = j+1
-    plt.subplot(1,2*(1+10),q*2-1)
-    plt.imshow(y_pred_true_pairs[j+20][0][0] > best_threshold)
-    plt.subplot(1,2*(1+10),q*2)
-    plt.imshow(y_pred_true_pairs[j+20][1][0])
-plt.show()
+# plt.figure(figsize=(20,20))
+# for j in range(10):
+#     q = j+1
+#     plt.subplot(1,2*(1+10),q*2-1)
+#     plt.imshow(y_pred_true_pairs[j+20][0][0] > best_threshold)
+#     plt.subplot(1,2*(1+10),q*2)
+#     plt.imshow(y_pred_true_pairs[j+20][1][0])
+# plt.show()
 
 path_test = '../input/test'
 test_path_images = os.path.abspath(path_test + "/images/")
