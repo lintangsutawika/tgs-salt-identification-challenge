@@ -179,6 +179,7 @@ learning_rate = 1e-2
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
 optimizer.zero_grad()
 scheduler = CyclicScheduler(base_lr=0.001, max_lr=0.01, step=5., mode='triangular2', gamma=1., scale_fn=None, scale_mode='cycle') ##exp_range ##triangular2
+best_iou = 0.0
 for e in range(epoch):
     train_loss = []
     train_iou = []
@@ -217,7 +218,6 @@ for e in range(epoch):
         
     val_loss = []
     val_iou = []
-    best_iou = 0.0
     model.eval()
     with tqdm(val_loader) as pbar:
         for images, masks in pbar:
