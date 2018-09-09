@@ -20,7 +20,7 @@ class FocalLoss2d(nn.Module):
             if class_weight is None:
                 class_weight = [1]*2 #[0.5, 0.5]
 
-            prob   = F.sigmoid(logit)
+            prob   = torch.sigmoid(logit)
             prob   = prob.view(-1, 1)
             prob   = torch.cat((1-prob, prob), 1)
             
