@@ -252,11 +252,13 @@ for e in range(epoch):
             val_loss.append(loss.item())
 
             pbar.set_description("Loss: %.3f, IoU: %.3f, Progress" % (loss, iou))
-    print("Epoch: %d, Train Loss: %.3f, Train IoU: %.3f,Val Loss: %.3f, Val IoU: %.3f" % (e, np.mean(train_loss), np.mean(train_iou), np.mean(val_loss), np.mean(val_iou)))
+    validation_iou = np.mean(val_iou)
+    print("Epoch: %d, Train Loss: %.3f, Train IoU: %.3f,Val Loss: %.3f, Val IoU: %.3f" % (e, np.mean(train_loss), np.mean(train_iou), np.mean(val_loss), validation_iou))
 
-    if np.mean(val_iou) > best_iou:
-        best_iou = np.mean(val_iou)
+    if validation_iou > best_iou:
+        best_iou = validation_iou
         torch.save(model.state_dict(), "model_checkpoint.pth")
+        print("Better validation, model saved")
     else:
         pass
 
@@ -341,7 +343,7 @@ for images, masks in tqdm(test_loader):
         y_pred = model(Variable(images))
 
     for i, _ in enumerate(images):
-        y_pred_one = y_preds[i] 
+        y_pred_one = y_pred[i] 
         y_pred_one = torch.sigmoid(y_pred_one)
         y_pred_one = y_pred_one.cpu().data.numpy()[0]
         y_pred_one = y_pred_one[13:-14,13:-14]
