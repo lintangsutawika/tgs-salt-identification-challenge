@@ -265,7 +265,6 @@ for e in range(epoch):
 print("Training Finished, Best IoU: %.3f" % (best_iou))
 
 #Choose best fold
-# model.load_state_dict(torch.load('model_checkpoint_fold{}.pth'.format(fold_score.index(max(fold_score)))))
 model.load_state_dict(torch.load('model_checkpoint_fold.pth'))
 #############################################################################################################
 fold_score = []
@@ -277,7 +276,6 @@ if torch.cuda.is_available():
 epoch = 85
 learning_rate = 0.0005
 patience = 0
-# optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
 optimizer.zero_grad()
 scheduler = CyclicScheduler(base_lr=0.001, max_lr=0.01, step=5., mode='triangular2', gamma=1., scale_fn=None, scale_mode='cycle') ##exp_range ##triangular2
@@ -285,11 +283,6 @@ best_iou = 0.0
 for e in range(epoch):
     train_loss = []
     train_iou = []
-
-    # for param in optimizer.param_groups:
-    #     param['lr'] = scheduler.get_rate(e, epoch)
-    # if e >= 100:
-    #     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=0.0001)
 
     model.train()
     with tqdm(train_loader) as pbar:
