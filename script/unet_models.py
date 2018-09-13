@@ -63,7 +63,7 @@ class UNetResNet34(nn.Module):
 
     def __init__(self ):
         super().__init__()
-        self.resnet = torchvision.models.resnet34(pretrained=True)
+        self.resnet = torchvision.models.resnet34(pretrained=False)
 
         self.conv1 = nn.Sequential(
             self.resnet.conv1,

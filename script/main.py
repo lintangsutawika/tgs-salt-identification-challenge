@@ -274,7 +274,7 @@ if torch.cuda.is_available():
 
 
 epoch = 85
-learning_rate = 0.005
+learning_rate = 0.0005
 patience = 0
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
 optimizer.zero_grad()
