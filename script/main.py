@@ -274,7 +274,7 @@ if torch.cuda.is_available():
 
 
 epoch = 85
-learning_rate = 0.0005
+learning_rate = 0.005
 patience = 0
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
 optimizer.zero_grad()
@@ -356,16 +356,19 @@ for e in range(epoch):
         print("Better validation, model saved")
     else:
         patience += 1
-        if patience == 10:
+        if patience == 6:
+            print("learning_rate decreased")
             patience = 0
             learning_rate = learning_rate/2
             optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
+            optimizer.zero_grad()
 
 print("Training Finished, Best IoU: %.3f" % (best_iou))
 
 #############################################################################################################
 # model.load_state_dict(torch.load('model_checkpoint_finetune_fold{}.pth'.format(fold_score.index(max(fold_score)))))
 # model.load_state_dict(torch.load('model_checkpoint_fold.pth'))
+model.load_state_dict(torch.load('model_checkpoint_finetune.pth'))
 model.eval()
 y_pred_true_pairs = []
 img_list = []
