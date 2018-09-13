@@ -82,7 +82,7 @@ class saltIDDataset(torch.utils.data.Dataset):
                     elif choice == 1:
                         image, mask = do_horizontal_shear2(image, mask, dx=np.random.uniform(-0.07, 0.07))
                     elif choice == 2:
-                        image, mask = do_shift_scale_rotate2(image, mask, dx=0, dy=0, scale=1, angle=np.random.uniform(0,15))
+                        image, mask = do_shift_scale_rotate2(image, mask, dx=0, dy=0, scale=1, angle=np.random.uniform(-10,10))
                     elif choice == 3:
                         image, mask = do_elastic_transform2(image, mask, grid=10, distort=np.random.uniform(0,0.15))
 
@@ -162,7 +162,7 @@ fold_score.append([0.0])
 
 salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train")
 train_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_train, 
-                                           batch_size=24, 
+                                           batch_size=16, 
                                            shuffle=True,
                                            num_workers=1)
 

@@ -45,8 +45,8 @@ class Decoder(nn.Module):
 
     def forward(self, x ):
         x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)#False
-        x = F.relu(self.conv1(x),inplace=True)
-        x = F.relu(self.conv2(x),inplace=True)
+        x = F.elu(self.conv1(x),inplace=True)
+        x = F.elu(self.conv2(x),inplace=True)
         return x
 
 # resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth'
@@ -77,9 +77,9 @@ class UNetResNet34(nn.Module):
 
         self.center = nn.Sequential(
             ConvBn2d(512, 512, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
+            nn.ELU(inplace=True),
             ConvBn2d(512, 256, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
+            nn.ELU(inplace=True),
         )
 
         self.decoder5 = Decoder(512+256, 512, 256)
@@ -90,7 +90,7 @@ class UNetResNet34(nn.Module):
 
         self.logit    = nn.Sequential(
             nn.Conv2d(32, 32, kernel_size=3, padding=1),
-            nn.ReLU(inplace=True),
+            nn.ELU(inplace=True),
             nn.Conv2d(32,  1, kernel_size=1, padding=0),
         )
 
@@ -168,7 +168,7 @@ class ConvRelu(nn.Module):
     def __init__(self, in_, out):
         super().__init__()
         self.conv = conv3x3(in_, out)
-        self.activation = nn.ReLU(inplace=True)
+        self.activation = nn.ELU(inplace=True)
 
     def forward(self, x):
         x = self.conv(x)
@@ -183,7 +183,7 @@ class DecoderBlock(nn.Module):
         self.block = nn.Sequential(
             ConvRelu(in_channels, middle_channels),
             nn.ConvTranspose2d(middle_channels, out_channels, kernel_size=3, stride=2, padding=1, output_padding=1),
-            nn.ReLU(inplace=True)
+            nn.ELU(inplace=True)
         )
 
     def forward(self, x):
