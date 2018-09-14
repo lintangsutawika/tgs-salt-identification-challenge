@@ -188,7 +188,7 @@ for e in range(epoch):
     #     param['lr'] = scheduler.get_rate(e, epoch)
     # if e >= 100:
     #     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=0.0001)
-    learning_rate = scheduler.get_rate(epoch, num_epoches)
+    learning_rate = scheduler.get_rate(e, epoch)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
 
     model.train()
