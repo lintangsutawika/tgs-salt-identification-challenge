@@ -172,7 +172,7 @@ val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid,
                                            shuffle=True,
                                            num_workers=1)
 
-epoch = 40
+epoch = 50
 learning_rate = 1e-2
 
 # optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
@@ -188,6 +188,8 @@ for e in range(epoch):
     #     param['lr'] = scheduler.get_rate(e, epoch)
     # if e >= 100:
     #     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=0.0001)
+    learning_rate = scheduler.get_rate(epoch, num_epoches)
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
 
     model.train()
     with tqdm(train_loader) as pbar:
@@ -205,8 +207,6 @@ for e in range(epoch):
             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
             # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
             loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            # loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
-            # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
             
             train_loss.append(loss.item())
 
@@ -246,8 +246,6 @@ for e in range(epoch):
             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
             # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
             loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            # loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
-            # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
 
             val_loss.append(loss.item())
 
