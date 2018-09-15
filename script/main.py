@@ -205,8 +205,8 @@ for e in range(epoch):
 
             # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-            # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+            loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+            # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
             
             train_loss.append(loss.item())
 
@@ -244,8 +244,8 @@ for e in range(epoch):
 
             # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-            # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-            loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+            loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+            # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
 
             val_loss.append(loss.item())
 
