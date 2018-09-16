@@ -57,6 +57,8 @@ SaltLevel = pd.DataFrame(data={'train_ids':train_ids, 'salt_class':Y_target})
 class saltIDDataset(torch.utils.data.Dataset):
 
     def __init__(self, path_images, list_images, transforms=False, train="train", tta=True):
+        self.image_size = 256
+        self.resize_to = 202
         self.train = train
         self.path_images = path_images
         self.list_images = list_images
@@ -95,11 +97,11 @@ class saltIDDataset(torch.utils.data.Dataset):
                     elif choice == 2:
                         image = do_gamma(image, np.random.uniform(1-0.08,1+0.08))
 
-                image, mask = do_resize2(image, mask, 101, 101)
-                image, mask = do_center_pad_to_factor2(image, mask)
+                image, mask = do_resize2(image, mask, self.resize_to, self.resize_to)
+                image, mask = do_center_pad_to_factor2(image, mask, factor=64)
             else:
-                image, mask = do_resize2(image, mask, 101, 101)
-                image, mask = do_center_pad_to_factor2(image, mask)
+                image, mask = do_resize2(image, mask, self.resize_to, self.resize_to)
+                image, mask = do_center_pad_to_factor2(image, mask, factor=64)
 
             image = np.expand_dims(image, axis=2)
             mask = np.expand_dims(mask, axis=2)
@@ -113,9 +115,9 @@ class saltIDDataset(torch.utils.data.Dataset):
             if self.train == "valid":
                 mask = cv2.imread(self.path_images + '/masks/' + self.list_images[idx],cv2.IMREAD_GRAYSCALE).astype(np.float32)/255
             else:
-                mask = np.zeros([128,128])
+                mask = np.zeros([self.image_size,self.image_size])
 
-            image, mask = do_resize2(image, mask, 101, 101)
+            image, mask = do_resize2(image, mask, self.resize_to, self.resize_to)
             image, mask = do_center_pad_to_factor2(image, mask)
 
             if self.tta == True:            
@@ -137,10 +139,10 @@ class saltIDDataset(torch.utils.data.Dataset):
             else:
                 return (image, mask)
 
-# train_idx, valid_idx, SaltLevel_train, SaltLevel_valid = train_test_split(
-#     SaltLevel.index,
-#     SaltLevel,
-#     test_size=0.08, stratify=SaltLevel.salt_class)
+train_idx, valid_idx, SaltLevel_train, SaltLevel_valid = train_test_split(
+    SaltLevel.index,
+    SaltLevel,
+    test_size=0.08, stratify=SaltLevel.salt_class)
 
 fold_score = []
 sss = StratifiedShuffleSplit(n_splits=4, test_size=0.08)
