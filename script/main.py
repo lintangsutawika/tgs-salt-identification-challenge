@@ -186,8 +186,8 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
         #     param['lr'] = scheduler.get_rate(e, epoch)
         # if e >= 100:
         #     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3, momentum=0.9, weight_decay=0.0001)
-        learning_rate = scheduler.get_rate(e, epoch)
-        optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
+        # learning_rate = scheduler.get_rate(e, epoch)
+        # optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
 
         model.train()
         with tqdm(train_loader) as pbar:
@@ -203,8 +203,8 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
 
                 # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
                 # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-                loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-                # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+                # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+                loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
                 
                 train_loss.append(loss.item())
 
@@ -242,8 +242,8 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
 
                 # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
                 # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-                loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-                # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+                # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+                loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
 
                 val_loss.append(loss.item())
 
