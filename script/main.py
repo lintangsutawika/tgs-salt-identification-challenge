@@ -139,10 +139,10 @@ class saltIDDataset(torch.utils.data.Dataset):
             else:
                 return (image, mask)
 
-train_idx, valid_idx, SaltLevel_train, SaltLevel_valid = train_test_split(
-    SaltLevel.index,
-    SaltLevel,
-    test_size=0.08, stratify=SaltLevel.salt_class)
+# train_idx, valid_idx, SaltLevel_train, SaltLevel_valid = train_test_split(
+#     SaltLevel.index,
+#     SaltLevel,
+#     test_size=0.08, stratify=SaltLevel.salt_class)
 
 fold_score = []
 sss = StratifiedShuffleSplit(n_splits=4, test_size=0.08)
@@ -265,108 +265,121 @@ best_cv = fold_score.index(max(fold_score))
 print("Training Finished, Best IoU: %.3f at fold {}".format(best_cv) % (max(fold_score)))
 model.load_state_dict(torch.load('model_checkpoint_fold{}.pth'.format(best_cv)))
 
-# #Choose best fold
-# #############################################################################################################
-# fold_score = []
-# model.train()
-# if torch.cuda.is_available():
-#     model.cuda()
+#Choose best fold
+#############################################################################################################
+fold_score = []
+sss = StratifiedShuffleSplit(n_splits=4, test_size=0.08)
+for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'], SaltLevel['salt_class'])):
+    model.train()
+    if torch.cuda.is_available():
+        model.cuda()
 
+    salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train")
+    train_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_train, 
+                                               batch_size=8, 
+                                               shuffle=True,
+                                               num_workers=1)
 
-# epoch = 85
-# learning_rate = 0.0005
-# patience = 0
-# optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
-# optimizer.zero_grad()
-# scheduler = CyclicScheduler(base_lr=0.001, max_lr=0.01, step=5., mode='triangular2', gamma=1., scale_fn=None, scale_mode='cycle') ##exp_range ##triangular2
-# best_iou = 0.0
-# for e in range(epoch):
-#     train_loss = []
-#     train_iou = []
+    salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid")
+    val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid, 
+                                               batch_size=8, 
+                                               shuffle=True,
+                                               num_workers=1)
 
-#     model.train()
-#     with tqdm(train_loader) as pbar:
-#         for images, masks in pbar: 
-#             masks = masks.cuda()
-#             y_pred = model(Variable(images).cuda())
+    epoch = 85
+    learning_rate = 0.005
+    patience = 0
+    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
+    optimizer.zero_grad()
+    scheduler = CyclicScheduler(base_lr=0.001, max_lr=0.01, step=5., mode='triangular2', gamma=1., scale_fn=None, scale_mode='cycle') ##exp_range ##triangular2
+    best_iou = 0.0
+    for e in range(epoch):
+        train_loss = []
+        train_iou = []
 
-#             prob = torch.sigmoid(y_pred).cpu().data.numpy()
-#             truth = masks.cpu().data.numpy()
+        model.train()
+        with tqdm(train_loader) as pbar:
+            for images, masks in pbar: 
+                masks = masks.cuda()
+                y_pred = model(Variable(images).cuda())
 
-#             iou = do_kaggle_metric(prob, truth, threshold=0.5)
-#             train_iou.append(iou)
+                prob = torch.sigmoid(y_pred).cpu().data.numpy()
+                truth = masks.cpu().data.numpy()
 
-#             # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
-#             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-#             # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-#             # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-#             loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
-#             # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
+                iou = do_kaggle_metric(prob, truth, threshold=0.5)
+                train_iou.append(iou)
+
+                # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
+                # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
+                # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+                # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+                loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
+                # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
+                
+                train_loss.append(loss.item())
+
+                loss.backward()
+                optimizer.step()
+                optimizer.zero_grad()
+
+                pbar.set_description("Loss: %.3f, IoU: %.3f, Progress" % (loss, iou))
             
-#             train_loss.append(loss.item())
+        val_loss = []
+        val_iou = []
+        model.eval()
+        with tqdm(val_loader) as pbar:
+            for images, masks in pbar:
+                if len(images) == 2:
+                    image_ori, image_rev = images
+                    mask_ori, mask_rev = masks
+                    if torch.cuda.is_available():
+                        image_ori, image_rev, mask_ori, mask_rev = image_ori.cuda(), image_rev.cuda(), mask_ori.cuda(), mask_rev.cuda()
 
-#             loss.backward()
-#             optimizer.step()
-#             optimizer.zero_grad()
+                    y_pred_rev = model(Variable(image_rev)).flip(3)
+                    y_pred_ori = model(Variable(image_ori))
+                    y_pred = (y_pred_ori+ y_pred_rev)/2
+                    masks = mask_ori
+                else:
+                    if torch.cuda.is_available():
+                        images, masks = images.cuda(), masks.cuda()
+                    y_pred = model(Variable(images))
 
-#             pbar.set_description("Loss: %.3f, IoU: %.3f, Progress" % (loss, iou))
-        
-#     val_loss = []
-#     val_iou = []
-#     model.eval()
-#     with tqdm(val_loader) as pbar:
-#         for images, masks in pbar:
-#             if len(images) == 2:
-#                 image_ori, image_rev = images
-#                 mask_ori, mask_rev = masks
-#                 if torch.cuda.is_available():
-#                     image_ori, image_rev, mask_ori, mask_rev = image_ori.cuda(), image_rev.cuda(), mask_ori.cuda(), mask_rev.cuda()
+                prob = torch.sigmoid(y_pred).cpu().data.numpy()[:,:,13:-14,13:-14]
+                truth = masks.cpu().data.numpy()[:,:,13:-14,13:-14]
 
-#                 y_pred_rev = model(Variable(image_rev)).flip(3)
-#                 y_pred_ori = model(Variable(image_ori))
-#                 y_pred = (y_pred_ori+ y_pred_rev)/2
-#                 masks = mask_ori
-#             else:
-#                 if torch.cuda.is_available():
-#                     images, masks = images.cuda(), masks.cuda()
-#                 y_pred = model(Variable(images))
+                iou = do_kaggle_metric(prob, truth, threshold=0.5)
+                val_iou.append(iou)
 
-#             prob = torch.sigmoid(y_pred).cpu().data.numpy()[:,:,13:-14,13:-14]
-#             truth = masks.cpu().data.numpy()[:,:,13:-14,13:-14]
+                # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
+                # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
+                # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+                # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+                loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
+                # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
 
-#             iou = do_kaggle_metric(prob, truth, threshold=0.5)
-#             val_iou.append(iou)
+                val_loss.append(loss.item())
 
-#             # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
-#             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-#             # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-#             # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-#             loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
-#             # loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
+                pbar.set_description("Loss: %.3f, IoU: %.3f, Progress" % (loss, iou))
+        validation_iou = np.mean(val_iou)
+        print("Epoch: %d, Train Loss: %.3f, Train IoU: %.3f,Val Loss: %.3f, Val IoU: %.3f" % (e, np.mean(train_loss), np.mean(train_iou), np.mean(val_loss), validation_iou))
 
-#             val_loss.append(loss.item())
-
-#             pbar.set_description("Loss: %.3f, IoU: %.3f, Progress" % (loss, iou))
-#     validation_iou = np.mean(val_iou)
-#     print("Epoch: %d, Train Loss: %.3f, Train IoU: %.3f,Val Loss: %.3f, Val IoU: %.3f" % (e, np.mean(train_loss), np.mean(train_iou), np.mean(val_loss), validation_iou))
-
-#     if validation_iou > best_iou:
-#         best_iou = validation_iou
-#         torch.save(model.state_dict(), "model_checkpoint_finetune.pth")
-#         print("Better validation, model saved")
-#     else:
-#         patience += 1
-#         if patience == 6:
-#             print("learning_rate decreased")
-#             patience = 0
-#             learning_rate = learning_rate/2
-#             optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
-#             optimizer.zero_grad()
-
-# print("Training Finished, Best IoU: %.3f" % (best_iou))
+        if validation_iou > best_iou:
+            best_iou = validation_iou
+            torch.save(model.state_dict(), "model_checkpoint_finetune{}.pth".format(cv_fold))
+            print("Better validation, model saved")
+        else:
+            patience += 1
+            if patience == 6:
+                print("learning_rate decreased")
+                patience = 0
+                learning_rate = learning_rate/2
+                optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
+                optimizer.zero_grad()
+    fold_score.append(best_iou)
+print("Training Finished, Best IoU: %.3f" % (best_iou))
 
 #############################################################################################################
-# model.load_state_dict(torch.load('model_checkpoint_finetune_fold{}.pth'.format(fold_score.index(max(fold_score)))))
+model.load_state_dict(torch.load('model_checkpoint_finetune{}.pth'.format(fold_score.index(max(fold_score)))))
 # model.load_state_dict(torch.load('model_checkpoint_fold.pth'))
 # model.load_state_dict(torch.load('model_checkpoint_finetune.pth'))
 model.eval()
