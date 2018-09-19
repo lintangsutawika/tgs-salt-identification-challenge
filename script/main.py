@@ -118,7 +118,7 @@ class saltIDDataset(torch.utils.data.Dataset):
                 mask = np.zeros([self.image_size,self.image_size])
 
             image, mask = do_resize2(image, mask, self.resize_to, self.resize_to)
-            image, mask = do_center_pad_to_factor2(image, mask)
+            image, mask = do_center_pad_to_factor2(image, mask, factor=64)
 
             if self.tta == True:            
                 image_flip, mask_flip = do_horizontal_flip2(image, mask)
@@ -139,10 +139,10 @@ class saltIDDataset(torch.utils.data.Dataset):
             else:
                 return (image, mask)
 
-# train_idx, valid_idx, SaltLevel_train, SaltLevel_valid = train_test_split(
-#     SaltLevel.index,
-#     SaltLevel,
-#     test_size=0.08, stratify=SaltLevel.salt_class)
+train_idx, valid_idx, SaltLevel_train, SaltLevel_valid = train_test_split(
+    SaltLevel.index,
+    SaltLevel,
+    test_size=0.08, stratify=SaltLevel.salt_class)
 
 fold_score = []
 sss = StratifiedShuffleSplit(n_splits=4, test_size=0.08)
@@ -236,8 +236,11 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
                         images, masks = images.cuda(), masks.cuda()
                     y_pred = model(Variable(images))
 
-                prob = torch.sigmoid(y_pred).cpu().data.numpy()[:,:,13:-14,13:-14]
-                truth = masks.cpu().data.numpy()[:,:,13:-14,13:-14]
+                prob = torch.sigmoid(y_pred)[:,:,27:-27,27:-27]
+                truth = masks[:,:,27:-27,27:-27]
+                
+                prob = F.interpolate(prob, size=(101,101)).cpu().data.numpy()
+                truth = F.interpolate(truth, size=(101,101)).cpu().data.numpy()
 
                 iou = do_kaggle_metric(prob, truth, threshold=0.5)
                 val_iou.append(iou)
@@ -344,8 +347,11 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
                         images, masks = images.cuda(), masks.cuda()
                     y_pred = model(Variable(images))
 
-                prob = torch.sigmoid(y_pred).cpu().data.numpy()[:,:,13:-14,13:-14]
-                truth = masks.cpu().data.numpy()[:,:,13:-14,13:-14]
+                prob = torch.sigmoid(y_pred)[:,:,27:-27,27:-27]
+                truth = masks[:,:,27:-27,27:-27]
+                
+                prob = F.interpolate(prob, size=(101,101)).cpu().data.numpy()
+                truth = F.interpolate(truth, size=(101,101)).cpu().data.numpy()
 
                 iou = do_kaggle_metric(prob, truth, threshold=0.5)
                 val_iou.append(iou)
@@ -405,8 +411,12 @@ with tqdm(val_loader) as pbar:
         for i, img in enumerate(images):
             img_list.append(img)
             y_pred_one = y_pred[i] 
-            y_pred_one = torch.sigmoid(y_pred_one).cpu().data.numpy()[:,13:-14,13:-14]
-            y_pred_true_pairs.append((y_pred_one, masks[i].cpu().data.numpy()[:,13:-14,13:-14]))
+            y_pred_one = torch.sigmoid(y_pred_one)[:,27:-27,27:-27]
+            y_pred_one = F.interpolate(y_pred_one, size=(101,101)).cpu().data.numpy()
+            mask = masks[i][:,27:-27,27:-27]
+            mask = F.interpolate(mask, size=(101,101)).cpu().data.numpy()
+
+            y_pred_true_pairs.append((y_pred_one, mask))
 
 thresholds = []
 for threshold in np.linspace(0, 1, 51):
@@ -462,9 +472,9 @@ for images, masks in tqdm(test_loader):
 
     for i, _ in enumerate(images):
         y_pred_one = y_pred[i] 
-        y_pred_one = torch.sigmoid(y_pred_one)
-        y_pred_one = y_pred_one.cpu().data.numpy()[0]
-        y_pred_one = y_pred_one[13:-14,13:-14]
+        y_pred_one = torch.sigmoid(y_pred_one)[:,27:-27,27:-27]
+        y_pred_one = F.interpolate(y_pred_one, size=(101,101)).cpu().data.numpy()
+
         y_pred_test.append(y_pred_one)
 
 binary_prediction = (y_pred_test > best_threshold).astype(int)
