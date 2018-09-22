@@ -191,7 +191,7 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
                                                num_workers=1)
 
     epoch = 50
-    learning_rate = 1e-2
+    learning_rate = 1e-3
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     # optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
@@ -220,8 +220,8 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
                 # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
                 # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
                 # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-                loss = L.lovasz_hinge(y_pred.squeeze(), masks.squeeze().cuda(), per_image=True, ignore=None)
-                # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+                # loss = L.lovasz_hinge(y_pred.squeeze(), masks.squeeze().cuda(), per_image=True, ignore=None)
+                loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
                 
                 train_loss.append(loss.item())
 
@@ -263,8 +263,8 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
                 # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
                 # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
                 # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-                loss = L.lovasz_hinge(y_pred.squeeze(), masks.squeeze().cuda(), per_image=True, ignore=None)
-                # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
+                # loss = L.lovasz_hinge(y_pred.squeeze(), masks.squeeze().cuda(), per_image=True, ignore=None)
+                loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
 
                 val_loss.append(loss.item())
 
@@ -298,7 +298,7 @@ else:
 
 salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train")
 train_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_train, 
-                                           batch_size=16, 
+                                           batch_size=8, 
                                            shuffle=True,
                                            num_workers=1)
 
@@ -312,11 +312,10 @@ val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid,
 #Fine Tuning
 #############################################################################################################
 # epoch = 50
-# learning_rate = 0.0005
+# learning_rate = 0.005
 # patience = 0
 # optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
 # optimizer.zero_grad()
-# scheduler = CyclicScheduler(base_lr=0.001, max_lr=0.01, step=5., mode='triangular2', gamma=1., scale_fn=None, scale_mode='cycle') ##exp_range ##triangular2
 # best_iou = 0.0
 # for e in range(epoch):
 #     train_loss = []
@@ -334,13 +333,7 @@ val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid,
 #             iou = do_kaggle_metric(prob, truth, threshold=0.5)
 #             train_iou.append(iou)
 
-#             # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
-#             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-#             # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-#             # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-#             # loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
-#             loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
-            
+#             loss = L.lovasz_hinge(y_pred.squeeze(), masks.squeeze().cuda(), per_image=True, ignore=None)
 #             train_loss.append(loss.item())
 
 #             loss.backward()
@@ -378,13 +371,7 @@ val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid,
 #             iou = do_kaggle_metric(prob, truth, threshold=0.5)
 #             val_iou.append(iou)
 
-#             # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
-#             # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
-#             # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-#             # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-#             # loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
-#             loss = L.binary_xloss(y_pred, Variable(masks.cuda()), ignore=255)
-
+#             loss = L.lovasz_hinge(y_pred.squeeze(), masks.squeeze().cuda(), per_image=True, ignore=None)
 #             val_loss.append(loss.item())
 
 #             pbar.set_description("Loss: %.3f, IoU: %.3f, Progress" % (loss, iou))
