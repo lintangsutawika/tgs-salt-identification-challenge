@@ -68,8 +68,9 @@ print("Dataset Size after removal: {}".format(len(train_ids)))
 class saltIDDataset(torch.utils.data.Dataset):
 
     def __init__(self, path_images, list_images, transforms=False, train="train", tta=True):
-        self.image_size = 256
+        self.image_size = 224#256
         self.resize_to = 202
+        self.factor = 32
         self.train = train
         self.path_images = path_images
         self.list_images = list_images
@@ -109,10 +110,10 @@ class saltIDDataset(torch.utils.data.Dataset):
                         image = do_gamma(image, np.random.uniform(1-0.08,1+0.08))
 
                 image, mask = do_resize2(image, mask, self.resize_to, self.resize_to)
-                image, mask = do_center_pad_to_factor2(image, mask, factor=64)
+                image, mask = do_center_pad_to_factor2(image, mask, factor=self.factor)
             else:
                 image, mask = do_resize2(image, mask, self.resize_to, self.resize_to)
-                image, mask = do_center_pad_to_factor2(image, mask, factor=64)
+                image, mask = do_center_pad_to_factor2(image, mask, factor=self.factor)
 
             image = np.expand_dims(image, axis=2)
             mask = np.expand_dims(mask, axis=2)
