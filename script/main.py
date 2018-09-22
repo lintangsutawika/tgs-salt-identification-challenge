@@ -191,19 +191,19 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
                                                num_workers=1)
 
     epoch = 50
-    learning_rate = 1e-3
+    learning_rate = 1e-2
 
-    # optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    # optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
+    # scheduler = CyclicScheduler(base_lr=0.001, max_lr=0.01, step=5., mode='triangular2', gamma=1., scale_fn=None, scale_mode='cycle') ##exp_range ##triangular2
     optimizer.zero_grad()
-    scheduler = CyclicScheduler(base_lr=0.001, max_lr=0.01, step=5., mode='triangular2', gamma=1., scale_fn=None, scale_mode='cycle') ##exp_range ##triangular2
     best_iou = 0.0
     for e in range(epoch):
         train_loss = []
         train_iou = []
 
-        learning_rate = scheduler.get_rate(e, epoch)
-        optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
+        # learning_rate = scheduler.get_rate(e, epoch)
+        # optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
 
         model.train()
         with tqdm(train_loader) as pbar:
