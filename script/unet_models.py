@@ -43,6 +43,9 @@ class Decoder(nn.Module):
         self.conv1 =  ConvBn2d(in_channels,  channels, kernel_size=3, padding=1)
         self.conv2 =  ConvBn2d(channels, out_channels, kernel_size=3, padding=1)
 
+        self.cse = cSEGate(out_channels)
+        self.sse = sSEGate(out_channels)
+
     def forward(self, x ,e=None):
         x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)#False
         if e is not None:
@@ -50,6 +53,33 @@ class Decoder(nn.Module):
 
         x = F.elu(self.conv1(x),inplace=True)
         x = F.elu(self.conv2(x),inplace=True)
+
+        g1 = self.cse(x)
+        g2 = self.sse(x)
+        x = g1*x + g2*x
+
+        return x
+
+class cSEGate(nn.Module):
+    def __init__(self, in_channels):
+        super(cSEGate, self).__init__()
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.conv1 = nn.Conv1d(in_channels, in_channels/2, kernel_size=(1,1), stride=1, padding=0, dilation=1, groups=1, bias=True)
+        self.conv2 = nn.Conv1d(in_channels/2, in_channels, kernel_size=(1,1), stride=1, padding=0, dilation=1, groups=1, bias=True)
+    
+    def forward(self, x):
+        x = self.pool(x)
+        x = F.relu(self.conv1(x), inplace=True)
+        x = F.sigmoid(self.conv2(x), inplace=True)
+        return x
+
+class sSEGate(nn.Module):    
+    def __init__(self, in_channels):
+        super(cSEGate, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, 1, kernel_size=(1,1), stride=1, padding=0, dilation=1, groups=1, bias=True)
+    
+    def forward(self, x):
+        x = F.sigmoid(self.conv1(x), inplace=True)
         return x
 
 # resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth'
@@ -137,7 +167,7 @@ class UNetResNet34(nn.Module):
             F.interpolate(d5, scale_factor=16, mode='bilinear', align_corners=False),
         ),1)
 
-        f = F.dropout2d(f, p=0.50)
+        # f = F.dropout2d(f, p=0.50)
         logit = self.logit(f)                     #; print('logit',logit.size())
         return logit
 
