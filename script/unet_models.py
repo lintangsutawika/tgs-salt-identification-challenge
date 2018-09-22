@@ -75,7 +75,7 @@ class cSEGate(nn.Module):
 
 class sSEGate(nn.Module):    
     def __init__(self, in_channels):
-        super(cSEGate, self).__init__()
+        super(sSEGate, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, 1, kernel_size=(1,1), stride=1, padding=0, dilation=1, groups=1, bias=True)
     
     def forward(self, x):
