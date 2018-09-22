@@ -64,8 +64,8 @@ class cSEGate(nn.Module):
     def __init__(self, in_channels):
         super(cSEGate, self).__init__()
         self.pool = nn.AdaptiveAvgPool2d((1, 1))
-        self.conv1 = nn.Conv1d(in_channels, in_channels/2, kernel_size=(1,1), stride=1, padding=0, dilation=1, groups=1, bias=True)
-        self.conv2 = nn.Conv1d(in_channels/2, in_channels, kernel_size=(1,1), stride=1, padding=0, dilation=1, groups=1, bias=True)
+        self.conv1 = nn.Conv1d(in_channels, in_channels//2, kernel_size=(1,1), stride=1, padding=0, dilation=1, groups=1, bias=True)
+        self.conv2 = nn.Conv1d(in_channels//2, in_channels, kernel_size=(1,1), stride=1, padding=0, dilation=1, groups=1, bias=True)
     
     def forward(self, x):
         x = self.pool(x)
