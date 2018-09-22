@@ -44,7 +44,7 @@ class Decoder(nn.Module):
         self.conv2 =  ConvBn2d(channels, out_channels, kernel_size=3, padding=1)
 
     def forward(self, x ,e=None):
-        x = F.upsample(x, scale_factor=2, mode='bilinear', align_corners=True)#False
+        x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)#False
         if e is not None:
             x = torch.cat([x,e],1)
 
@@ -120,7 +120,7 @@ class UNetResNet34(nn.Module):
 
 
         #f = F.max_pool2d(e5, kernel_size=2, stride=2 )  #; print(f.size())
-        #f = F.upsample(f, scale_factor=2, mode='bilinear', align_corners=True)#False
+        #f = F.interpolate(f, scale_factor=2, mode='bilinear', align_corners=True)#False
         #f = self.center(f)                       #; print('center',f.size())
         f = self.center(e5)
         d5 = self.decoder5(f, e5)   #self.decoder5(torch.cat([f, e5], 1))  #; print('d5',f.size())
@@ -131,10 +131,10 @@ class UNetResNet34(nn.Module):
 
         f = torch.cat((
             d1,
-            F.upsample(d2, scale_factor=2, mode='bilinear', align_corners=False),
-            F.upsample(d3, scale_factor=4, mode='bilinear', align_corners=False),
-            F.upsample(d4, scale_factor=8, mode='bilinear', align_corners=False),
-            F.upsample(d5, scale_factor=16, mode='bilinear', align_corners=False),
+            F.interpolate(d2, scale_factor=2, mode='bilinear', align_corners=False),
+            F.interpolate(d3, scale_factor=4, mode='bilinear', align_corners=False),
+            F.interpolate(d4, scale_factor=8, mode='bilinear', align_corners=False),
+            F.interpolate(d5, scale_factor=16, mode='bilinear', align_corners=False),
         ),1)
 
         f = F.dropout2d(f, p=0.50)
