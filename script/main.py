@@ -160,7 +160,7 @@ class saltIDDataset(torch.utils.data.Dataset):
 train_indexes = []
 valid_indexes = []
 fold_score = []
-sss = StratifiedShuffleSplit(n_splits=4, test_size=0.08)
+sss = StratifiedShuffleSplit(n_splits=1, test_size=0.08)
 for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'], SaltLevel['salt_class'])):
     model = SaltNet()
     # model = UNet11()
