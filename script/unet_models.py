@@ -43,8 +43,11 @@ class Decoder(nn.Module):
         self.conv1 =  ConvBn2d(in_channels,  channels, kernel_size=3, padding=1)
         self.conv2 =  ConvBn2d(channels, out_channels, kernel_size=3, padding=1)
 
-    def forward(self, x ):
-        x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)#False
+    def forward(self, x ,e=None):
+        x = F.upsample(x, scale_factor=2, mode='bilinear', align_corners=True)#False
+        if e is not None:
+            x = torch.cat([x,e],1)
+            
         x = F.elu(self.conv1(x),inplace=True)
         x = F.elu(self.conv2(x),inplace=True)
         return x
