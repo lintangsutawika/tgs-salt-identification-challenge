@@ -188,7 +188,7 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
                                                num_workers=1)
 
     epoch = 50
-    learning_rate = 1e-2
+    learning_rate = 1e-3
 
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     # optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
@@ -211,7 +211,7 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
                 prob = torch.sigmoid(y_pred).cpu().data.numpy()
                 truth = masks.cpu().data.numpy()
 
-                iou = do_kaggle_metric(prob, truth, threshold=0.5)
+                iou = do_kaggle_metric(prob, truth, threshold=0.0)#0.5)
                 train_iou.append(iou)
 
                 # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
@@ -254,7 +254,7 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
                 prob = F.interpolate(prob, size=(101,101)).cpu().data.numpy()
                 truth = F.interpolate(truth, size=(101,101)).cpu().data.numpy()
 
-                iou = do_kaggle_metric(prob, truth, threshold=0.5)
+                iou = do_kaggle_metric(prob, truth, threshold=0.0)#0.5)
                 val_iou.append(iou)
 
                 # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
