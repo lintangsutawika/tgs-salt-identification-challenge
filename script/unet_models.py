@@ -126,7 +126,7 @@ class UNetResNet34(nn.Module):
         f = self.decoder2(torch.cat([f, e2], 1))  #; print('d2',f.size())
         f = self.decoder1(f)                      # ; print('d1',f.size())
 
-        #f = F.dropout2d(f, p=0.20)
+        f = F.dropout2d(f, p=0.20)
         logit = self.logit(f)                     #; print('logit',logit.size())
         return logit
 
