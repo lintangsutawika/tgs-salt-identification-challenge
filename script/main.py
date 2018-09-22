@@ -64,11 +64,13 @@ Y_target = [int(x) for x in pd.cut(Y_target, bins=[-0.1, 0.1, 10.0, 20.0, 30.0, 
 SaltLevel = pd.DataFrame(data={'train_ids':train_ids, 'salt_class':Y_target})
 
 print("Dataset Size after removal: {}".format(len(train_ids)))
+right_pad = 27
+left_pad = 27
 
 class saltIDDataset(torch.utils.data.Dataset):
 
     def __init__(self, path_images, list_images, transforms=False, train="train", tta=True):
-        self.image_size = 224#256
+        self.image_size = 256
         self.resize_to = 202
         self.factor = 32
         self.train = train
@@ -178,7 +180,7 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
 
     salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train")
     train_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_train, 
-                                               batch_size=16, 
+                                               batch_size=8, 
                                                shuffle=True,
                                                num_workers=1)
 
@@ -249,8 +251,8 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
                         images, masks = images.cuda(), masks.cuda()
                     y_pred = model(Variable(images))
 
-                prob = torch.sigmoid(y_pred)[:,:,27:-27,27:-27]
-                truth = masks[:,:,27:-27,27:-27]
+                prob = torch.sigmoid(y_pred)[:,:,right_pad:-left_pad,right_pad:-left_pad]
+                truth = masks[:,:,right_pad:-left_pad,right_pad:-left_pad]
                 
                 prob = F.interpolate(prob, size=(101,101)).cpu().data.numpy()
                 truth = F.interpolate(truth, size=(101,101)).cpu().data.numpy()
@@ -367,8 +369,8 @@ val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid,
 #                     images, masks = images.cuda(), masks.cuda()
 #                 y_pred = model(Variable(images))
 
-#             prob = torch.sigmoid(y_pred)[:,:,27:-27,27:-27]
-#             truth = masks[:,:,27:-27,27:-27]
+#             prob = torch.sigmoid(y_pred)[:,:,right_pad:-left_pad,right_pad:-left_pad]
+#             truth = masks[:,:,right_pad:-left_pad,right_pad:-left_pad]
             
 #             prob = F.interpolate(prob, size=(101,101)).cpu().data.numpy()
 #             truth = F.interpolate(truth, size=(101,101)).cpu().data.numpy()
@@ -427,10 +429,10 @@ with tqdm(val_loader) as pbar:
                 images, masks = images.cuda(), masks.cuda()
             y_pred = model(Variable(images))
 
-        y_pred = torch.sigmoid(y_pred)[:,:,27:-27,27:-27]
+        y_pred = torch.sigmoid(y_pred)[:,:,right_pad:-left_pad,right_pad:-left_pad]
         y_pred = F.interpolate(y_pred, size=(101,101)).cpu().data.numpy()
 
-        masks = masks[:,:,27:-27,27:-27]
+        masks = masks[:,:,right_pad:-left_pad,right_pad:-left_pad]
         masks = F.interpolate(masks, size=(101,101)).cpu().data.numpy()
         for i, img in enumerate(images):
             img_list.append(img)
@@ -491,7 +493,7 @@ for images, masks in tqdm(test_loader):
             images, masks = images.cuda(), masks.cuda()
         y_pred = model(Variable(images))
 
-    y_pred = torch.sigmoid(y_pred)[:,:,27:-27,27:-27]
+    y_pred = torch.sigmoid(y_pred)[:,:,right_pad:-left_pad,right_pad:-left_pad]
     y_pred = F.interpolate(y_pred, size=(101,101)).cpu().data.numpy()
     for i, _ in enumerate(images):
         y_pred_one = y_pred[i] 
