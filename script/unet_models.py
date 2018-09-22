@@ -120,11 +120,11 @@ class UNetResNet34(nn.Module):
         #f = F.upsample(f, scale_factor=2, mode='bilinear', align_corners=True)#False
         #f = self.center(f)                       #; print('center',f.size())
         f = self.center(e5)
-        d5 = self.decoder5(torch.cat([f, e5], 1))  #; print('d5',f.size())
-        d4 = self.decoder4(torch.cat([d5, e4], 1))  #; print('d4',f.size())
-        d3 = self.decoder3(torch.cat([d4, e3], 1))  #; print('d3',f.size())
-        d2 = self.decoder2(torch.cat([d3, e2], 1))  #; print('d2',f.size())
-        d1 = self.decoder1(d2)                      # ; print('d1',f.size())
+        d5 = self.decoder5(f, e5)   #self.decoder5(torch.cat([f, e5], 1))  #; print('d5',f.size())
+        d4 = self.decoder4(d5, e4)  #self.decoder4(torch.cat([d5, e4], 1))  #; print('d4',f.size())
+        d3 = self.decoder3(d4, e3)  #self.decoder3(torch.cat([d4, e3], 1))  #; print('d3',f.size())
+        d2 = self.decoder2(d3, e2)  #self.decoder2(torch.cat([d3, e2], 1))  #; print('d2',f.size())
+        d1 = self.decoder1(d2)                      #self.decoder1(d2)                      # ; print('d1',f.size())
 
         f = torch.cat((
             d1,
