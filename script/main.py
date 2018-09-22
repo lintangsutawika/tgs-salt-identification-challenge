@@ -41,18 +41,29 @@ train_path_masks = os.path.abspath(path_train + "/masks/")
 train_path_images_list = glob.glob(os.path.join(train_path_images, "*.png"))
 train_path_masks_list = glob.glob(os.path.join(train_path_masks, "*.png"))
 
-train_ids = next(os.walk(train_path_images))[2]
-Y_target = np.zeros((len(train_ids), 1), dtype=int)
+train_ids = np.array(next(os.walk(train_path_images))[2])
+Y_target = np.zeros((len(train_ids), 1), dtype=float)
+Y_alt = list(np.zeros((len(train_ids), 1), dtype=float))
+pop_list = []
 for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
     mask = imread(path_train + '/masks/' + id_).astype(np.bool_)
-    Y_target[n] = np.sum(mask)/(101*101)*100
+    pixel_sum = np.sum(mask)
+    Y_target[n] = pixel_sum/(101.0*101.0)*100.0
+    Y_alt[n] = pixel_sum
+    if pixel_sum < 10 and pixel_sum != 0:
+        pop_list.append(n)
     # if np.sum(mask)/(101*101)*100 > 0:
     #     Y_target[n] = 1
     # else:
     #     Y_target[n] = 0
 
-Y_target = [int(x) for x in pd.cut(Y_target.squeeze(), bins=[-0.1, 0.1, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0], include_lowest=True, labels=['0','1','2','3','4','5','6','7','8','9','10'])]
+train_ids = np.delete(train_ids, pop_list, None)
+Y_target = np.delete(Y_target, pop_list, None)
+
+Y_target = [int(x) for x in pd.cut(Y_target, bins=[-0.1, 0.1, 10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0], include_lowest=True, labels=['0','1','2','3','4','5','6','7','8','9','10'])]
 SaltLevel = pd.DataFrame(data={'train_ids':train_ids, 'salt_class':Y_target})
+
+print("Dataset Size after removal: {}".format(len(train_ids)))
 
 class saltIDDataset(torch.utils.data.Dataset):
 
