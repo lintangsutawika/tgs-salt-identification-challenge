@@ -64,14 +64,14 @@ Y_target = [int(x) for x in pd.cut(Y_target, bins=[-0.1, 0.1, 10.0, 20.0, 30.0, 
 SaltLevel = pd.DataFrame(data={'train_ids':train_ids, 'salt_class':Y_target})
 
 print("Dataset Size after removal: {}".format(len(train_ids)))
-right_pad = 27
-left_pad = 27
+right_pad = 13
+left_pad = 14
 
 class saltIDDataset(torch.utils.data.Dataset):
 
     def __init__(self, path_images, list_images, transforms=False, train="train", tta=True):
-        self.image_size = 256
-        self.resize_to = 202
+        self.image_size = 128
+        self.resize_to = 101
         self.factor = 32
         self.train = train
         self.path_images = path_images
