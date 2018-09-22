@@ -47,7 +47,7 @@ class Decoder(nn.Module):
         x = F.upsample(x, scale_factor=2, mode='bilinear', align_corners=True)#False
         if e is not None:
             x = torch.cat([x,e],1)
-            
+
         x = F.elu(self.conv1(x),inplace=True)
         x = F.elu(self.conv2(x),inplace=True)
         return x
@@ -93,9 +93,9 @@ class UNetResNet34(nn.Module):
         self.decoder1 = Decoder(64     ,  32, 64)#Decoder(128    , 128,  32)
 
         self.logit    = nn.Sequential(
-            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.Conv2d(320, 64, kernel_size=3, padding=1),
             nn.ELU(inplace=True),
-            nn.Conv2d(32,  1, kernel_size=1, padding=0),
+            nn.Conv2d(64,  1, kernel_size=1, padding=0),
         )
 
     def forward(self, x):
