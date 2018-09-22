@@ -70,7 +70,7 @@ class cSEGate(nn.Module):
     def forward(self, x):
         x = self.pool(x)
         x = F.relu(self.conv1(x), inplace=True)
-        x = F.sigmoid(self.conv2(x), inplace=True)
+        x = F.sigmoid(self.conv2(x))
         return x
 
 class sSEGate(nn.Module):    
@@ -79,7 +79,7 @@ class sSEGate(nn.Module):
         self.conv1 = nn.Conv2d(in_channels, 1, kernel_size=(1,1), stride=1, padding=0, dilation=1, groups=1, bias=True)
     
     def forward(self, x):
-        x = F.sigmoid(self.conv1(x), inplace=True)
+        x = F.sigmoid(self.conv1(x))
         return x
 
 # resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth'
