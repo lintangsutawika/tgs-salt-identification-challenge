@@ -80,13 +80,14 @@ class UNetResNet34(nn.Module):
             nn.ELU(inplace=True),
             ConvBn2d(512, 256, kernel_size=3, padding=1),
             nn.ELU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2)
         )
 
-        self.decoder5 = Decoder(512+256, 512, 256)
-        self.decoder4 = Decoder(256+256, 512, 256)
-        self.decoder3 = Decoder(128+256, 256,  64)
-        self.decoder2 = Decoder( 64+ 64, 128, 128)
-        self.decoder1 = Decoder(128    , 128,  32)
+        self.decoder5 = Decoder(256+512, 512, 64)#Decoder(512+256, 512, 256)
+        self.decoder4 = Decoder(64 +256, 256, 64)#Decoder(256+256, 512, 256)
+        self.decoder3 = Decoder(64 +128, 128, 64)#Decoder(128+256, 256,  64)
+        self.decoder2 = Decoder(64 + 64,  64, 64)#Decoder( 64+ 64, 128, 128)
+        self.decoder1 = Decoder(64     ,  32, 64)#Decoder(128    , 128,  32)
 
         self.logit    = nn.Sequential(
             nn.Conv2d(32, 32, kernel_size=3, padding=1),
@@ -119,14 +120,21 @@ class UNetResNet34(nn.Module):
         #f = F.upsample(f, scale_factor=2, mode='bilinear', align_corners=True)#False
         #f = self.center(f)                       #; print('center',f.size())
         f = self.center(e5)
-         
-        f = self.decoder5(torch.cat([f, e5], 1))  #; print('d5',f.size())
-        f = self.decoder4(torch.cat([f, e4], 1))  #; print('d4',f.size())
-        f = self.decoder3(torch.cat([f, e3], 1))  #; print('d3',f.size())
-        f = self.decoder2(torch.cat([f, e2], 1))  #; print('d2',f.size())
-        f = self.decoder1(f)                      # ; print('d1',f.size())
+        d5 = self.decoder5(torch.cat([f, e5], 1))  #; print('d5',f.size())
+        d4 = self.decoder4(torch.cat([d5, e4], 1))  #; print('d4',f.size())
+        d3 = self.decoder3(torch.cat([d4, e3], 1))  #; print('d3',f.size())
+        d2 = self.decoder2(torch.cat([d3, e2], 1))  #; print('d2',f.size())
+        d1 = self.decoder1(d2)                      # ; print('d1',f.size())
 
-        f = F.dropout2d(f, p=0.20)
+        f = torch.cat((
+            d1,
+            F.upsample(d2, scale_factor=2, mode='bilinear', align_corners=False),
+            F.upsample(d3, scale_factor=4, mode='bilinear', align_corners=False),
+            F.upsample(d4, scale_factor=8, mode='bilinear', align_corners=False),
+            F.upsample(d5, scale_factor=16, mode='bilinear', align_corners=False),
+        ),1)
+
+        f = F.dropout2d(f, p=0.50)
         logit = self.logit(f)                     #; print('logit',logit.size())
         return logit
 

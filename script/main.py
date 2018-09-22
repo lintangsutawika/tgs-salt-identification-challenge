@@ -211,13 +211,13 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
                 prob = torch.sigmoid(y_pred).cpu().data.numpy()
                 truth = masks.cpu().data.numpy()
 
-                iou = do_kaggle_metric(prob, truth, threshold=0.0)#0.5)
+                iou = do_kaggle_metric(prob, truth, threshold=0.5)
                 train_iou.append(iou)
 
                 # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
                 # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
                 # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-                loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
+                loss = L.lovasz_hinge(y_pred.squeeze(), masks.squeeze().cuda(), pre_image=True, ignore=None)
                 # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
                 
                 train_loss.append(loss.item())
@@ -254,13 +254,13 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
                 prob = F.interpolate(prob, size=(101,101)).cpu().data.numpy()
                 truth = F.interpolate(truth, size=(101,101)).cpu().data.numpy()
 
-                iou = do_kaggle_metric(prob, truth, threshold=0.0)#0.5)
+                iou = do_kaggle_metric(prob, truth, threshold=0.5)
                 val_iou.append(iou)
 
                 # loss = torch.nn.BCEWithLogitsLoss()(y_pred, Variable(masks.cuda()))
                 # loss = torch.nn.BCELoss()(y_pred, Variable(masks.cuda()))
                 # loss = RobustFocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
-                loss = L.lovasz_hinge(y_pred, Variable(masks.cuda()), ignore=255)
+                loss = L.lovasz_hinge(y_pred.squeeze(), masks.squeeze().cuda(), pre_image=True, ignore=None)
                 # loss = FocalLoss2d()(y_pred, Variable(masks.cuda()), type='sigmoid')
 
                 val_loss.append(loss.item())
