@@ -180,17 +180,17 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
 
     salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train")
     train_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_train, 
-                                               batch_size=32, 
+                                               batch_size=16, 
                                                shuffle=True,
                                                num_workers=1)
 
     salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid")
     val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid, 
-                                               batch_size=8, 
+                                               batch_size=2, 
                                                shuffle=True,
                                                num_workers=1)
 
-    epoch = 50
+    epoch = 5
     learning_rate = 1e-2
     # optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
@@ -297,20 +297,20 @@ else:
 
 salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train")
 train_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_train, 
-                                           batch_size=32, 
+                                           batch_size=16, 
                                            shuffle=True,
                                            num_workers=1)
 
 salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid")
 val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid, 
-                                           batch_size=8, 
+                                           batch_size=2, 
                                            shuffle=True,
                                            num_workers=1)
 
 #############################################################################################################
 #Fine Tuning
 #############################################################################################################
-epoch = 85
+epoch = 5
 learning_rate = 0.005
 patience = 0
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
@@ -424,7 +424,6 @@ with tqdm(val_loader) as pbar:
             img_list.append(img)
             y_pred_one = y_pred[i] 
             mask = masks[i]
-
             y_pred_true_pairs.append((y_pred_one, mask))
 
 thresholds = []
