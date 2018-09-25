@@ -3,10 +3,9 @@ import torch
 
 from tqdm import tqdm
 
+import torch.nn.functional as F
 from torchvision import transforms
 from torch.autograd import Variable
-# import torchvision.transforms.functional as F
-import torch.nn.functional as F
 
 import numpy as np
 

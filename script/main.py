@@ -1,4 +1,5 @@
 import os
+import cv2
 import glob
 import random
 import pickle
@@ -15,24 +16,23 @@ from tqdm import tqdm
 from skimage.io import imread
 from skimage.transform import resize
 from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
-import cv2
 
 import torch
-from torch.utils.data.dataset import Dataset
-from torchvision import transforms
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.datasets as dsets
 from torch.autograd import Variable
+from torch.utils.data.dataset import Dataset
+from torchvision import transforms
 
 from torchvision import models
 from unet_models import SaltNet, UNet11
 
 import lovasz_losses as L
 
-from augment import *
 from loss import *
 from metric import *
+from augment import *
 from scheduler import *
 
 from utils import rle_encoding, FreezeBatchNorm, saltIDDataset, find_best_threshold, infer_prediction
@@ -41,7 +41,6 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--train', default="True")
 parser.add_argument('--inference', default="True")
 parser.add_argument('--ensemble', default="False")
-parser.add_argument('--main', default="True")
 parser.add_argument('--finetune', default=2)
 parser.add_argument('--best_cv', default="True")
 parser.add_argument('--batch_size', default=8)
@@ -97,7 +96,7 @@ if torch.cuda.is_available():
 #############################################################################################################
 # Main Training
 #############################################################################################################
-if args.main == "True" and args.train == "True":
+if int(args.finetune) >= 0 and args.train == "True":
     print("Start Main Training")
     train_indexes = []
     valid_indexes = []
@@ -372,7 +371,6 @@ if int(args.finetune) >= 2 and args.train == "True":
                                                batch_size=2, 
                                                shuffle=True,
                                                num_workers=1)
-
     epoch = 1
     learning_rate = 0.001
     patience = 0
@@ -485,7 +483,7 @@ if args.inference == "True":
                 model_name = "model_checkpoint_finetune_2_fold_{}.pth".format(n)
             elif int(args.finetune) == 1:
                 model_name = "model_checkpoint_finetune_1_fold_{}.pth".format(n)
-            elif args.main == "True":
+            elif int(args.finetune) == 0:
                 model_name = "model_checkpoint_fold_{}.pth".format(n)
 
             if torch.cuda.is_available():
@@ -515,7 +513,7 @@ if args.inference == "True":
             model_name = "model_checkpoint_finetune_2_fold_{}.pth".format(saved_best_cv)
         elif int(args.finetune) == 1:
             model_name = "model_checkpoint_finetune_1_fold_{}.pth".format(saved_best_cv)
-        elif args.main == "True":
+        elif int(args.finetune) == 0:
             model_name = "model_checkpoint_fold_{}.pth".format(saved_best_cv)
 
         if torch.cuda.is_available():
