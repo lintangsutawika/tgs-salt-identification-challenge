@@ -3,6 +3,7 @@ import torch
 
 from tqdm import tqdm
 
+from torchvision import transforms
 from torch.autograd import Variable
 import torchvision.transforms.functional as F
 

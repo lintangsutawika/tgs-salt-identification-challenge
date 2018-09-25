@@ -93,7 +93,7 @@ print("Dataset Size after removal: {}".format(len(train_ids)))
 # Main Training
 #############################################################################################################
 if args.main == "True" and args.train == "True":
-    print("Start Main Tuning")
+    print("Start Main Training")
     train_indexes = []
     valid_indexes = []
     fold_score = []
