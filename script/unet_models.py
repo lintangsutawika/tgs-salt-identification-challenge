@@ -34,7 +34,7 @@ class ConvBn2d(nn.Module):
 
     def forward(self, z):
         x = self.conv(z)
-        # x = self.bn(x)
+        x = self.bn(x)
         return x
 
 class Decoder(nn.Module):

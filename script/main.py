@@ -50,13 +50,14 @@ for n, id_ in tqdm(enumerate(train_ids), total=len(train_ids)):
     pixel_sum = np.sum(mask)
     Y_target[n] = pixel_sum/(101.0*101.0)*100.0
     Y_alt[n] = pixel_sum
-    if pixel_sum < 10 and pixel_sum != 0:
+    if pixel_sum < 15 and pixel_sum != 0:
         pop_list.append(n)
     # if np.sum(mask)/(101*101)*100 > 0:
     #     Y_target[n] = 1
     # else:
     #     Y_target[n] = 0
 
+#pop_list = []
 train_ids = np.delete(train_ids, pop_list, None)
 Y_target = np.delete(Y_target, pop_list, None)
 
@@ -64,15 +65,15 @@ Y_target = [int(x) for x in pd.cut(Y_target, bins=[-0.1, 0.1, 10.0, 20.0, 30.0, 
 SaltLevel = pd.DataFrame(data={'train_ids':train_ids, 'salt_class':Y_target})
 
 print("Dataset Size after removal: {}".format(len(train_ids)))
-right_pad = 27#13
-left_pad = 27#14
+right_pad = 27 #13
+left_pad = 27 #14
 
 class saltIDDataset(torch.utils.data.Dataset):
 
     def __init__(self, path_images, list_images, transforms=False, train="train", tta=True):
-        self.image_size = 256#128
-        self.resize_to = 202#101
-        self.factor = 64#32
+        self.image_size = 256 #128
+        self.resize_to = 202 #101
+        self.factor = 64 #32
         self.train = train
         self.path_images = path_images
         self.list_images = list_images
@@ -160,7 +161,7 @@ class saltIDDataset(torch.utils.data.Dataset):
 train_indexes = []
 valid_indexes = []
 fold_score = []
-sss = StratifiedShuffleSplit(n_splits=1, test_size=0.08)
+sss = StratifiedShuffleSplit(n_splits=4, test_size=0.08)
 for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'], SaltLevel['salt_class'])):
     model = SaltNet()
     # model = UNet11()
@@ -180,7 +181,7 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
 
     salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train")
     train_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_train, 
-                                               batch_size=16, 
+                                               batch_size=8, 
                                                shuffle=True,
                                                num_workers=1)
 
@@ -190,7 +191,7 @@ for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'
                                                shuffle=True,
                                                num_workers=1)
 
-    epoch = 5
+    epoch = 50
     learning_rate = 1e-2
     # optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
@@ -310,7 +311,7 @@ val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid,
 #############################################################################################################
 #Fine Tuning
 #############################################################################################################
-epoch = 5
+epoch = 85
 learning_rate = 0.005
 patience = 0
 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
