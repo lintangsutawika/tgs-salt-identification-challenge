@@ -20,8 +20,8 @@ import cv2
 import torch
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
-import torchvision.transforms.functional as F
 import torch.nn as nn
+import torch.nn.Functional as F
 import torchvision.datasets as dsets
 from torch.autograd import Variable
 
