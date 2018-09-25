@@ -5,7 +5,8 @@ from tqdm import tqdm
 
 from torchvision import transforms
 from torch.autograd import Variable
-import torchvision.transforms.functional as F
+# import torchvision.transforms.functional as F
+import torch.nn.functional as F
 
 import numpy as np
 

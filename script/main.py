@@ -21,7 +21,7 @@ import torch
 from torch.utils.data.dataset import Dataset
 from torchvision import transforms
 import torch.nn as nn
-import torch.nn.Functional as F
+import torch.nn.functional as F
 import torchvision.datasets as dsets
 from torch.autograd import Variable
 
@@ -35,7 +35,7 @@ from loss import *
 from metric import *
 from scheduler import *
 
-from utils import *
+from utils import rle_encoding, FreezeBatchNorm, saltIDDataset, find_best_threshold, infer_prediction
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--train', default="True")
@@ -89,6 +89,11 @@ print("Dataset Size after removal: {}".format(len(train_ids)))
 #     SaltLevel,
 #     test_size=0.08, stratify=SaltLevel.salt_class)
 
+model = SaltNet()
+# model = UNet11()
+if torch.cuda.is_available():
+    model.cuda()
+
 #############################################################################################################
 # Main Training
 #############################################################################################################
@@ -100,11 +105,8 @@ if args.main == "True" and args.train == "True":
     sss = StratifiedShuffleSplit(n_splits=4, test_size=0.08)
     for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'], SaltLevel['salt_class'])):
         print("Training for fold {}".format(cv_fold))
-        model = SaltNet()
-        # model = UNet11()
+
         model.train()
-        if torch.cuda.is_available():
-            model.cuda()
 
         train_indexes.append(train_idx)
         valid_indexes.append(valid_idx)
@@ -128,7 +130,7 @@ if args.main == "True" and args.train == "True":
                                                    shuffle=True,
                                                    num_workers=1)
 
-        epoch = 50
+        epoch = 1
         learning_rate = 1e-2
         # optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
@@ -220,7 +222,7 @@ if args.main == "True" and args.train == "True":
     best_fold = fold_score.index(max(fold_score))
     print("Training Finished, Best IoU: %.3f at fold {}".format(best_fold) % (max(fold_score)))
     with open('indexes.pkl', 'wb') as f:
-        pickle.dump([max(fold_score), train_indexes, valid_indexes], f)
+        pickle.dump([best_fold, train_indexes, valid_indexes], f)
 
 #############################################################################################################
 #Fine Tuning #1
@@ -255,7 +257,7 @@ if int(args.finetune) >= 1 and args.train == "True":
                                                shuffle=True,
                                                num_workers=1)
 
-    epoch = 85
+    epoch = 1
     learning_rate = 0.005
     patience = 0
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
@@ -324,7 +326,7 @@ if int(args.finetune) >= 1 and args.train == "True":
 
         if validation_iou > best_iou:
             best_iou = validation_iou
-            torch.save(model.state_dict(), "model_checkpoint_finetune_1_fold_{}.pth".format(best_cv))
+            torch.save(model.state_dict(), "model_checkpoint_finetune_1_fold_{}.pth".format(selected_cv))
             print("Better validation, model saved")
         else:
             patience += 1
@@ -371,7 +373,7 @@ if int(args.finetune) >= 2 and args.train == "True":
                                                shuffle=True,
                                                num_workers=1)
 
-    epoch = 60
+    epoch = 1
     learning_rate = 0.001
     patience = 0
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
@@ -441,7 +443,7 @@ if int(args.finetune) >= 2 and args.train == "True":
 
         if validation_iou > best_iou:
             best_iou = validation_iou
-            torch.save(model.state_dict(), "model_checkpoint_finetune.pth_2_fold_{}.pth".format(cv_fold))
+            torch.save(model.state_dict(), "model_checkpoint_finetune_2_fold_{}.pth".format(selected_cv))
             print("Better validation, model saved")
         else:
             patience += 1
@@ -479,9 +481,9 @@ if args.inference == "True":
                                                        batch_size=2, 
                                                        shuffle=True,
                                                        num_workers=1)
-            if args.finetune == 2:
+            if int(args.finetune) == 2:
                 model_name = "model_checkpoint_finetune_2_fold_{}.pth".format(n)
-            elif args.finetune == 1:
+            elif int(args.finetune) == 1:
                 model_name = "model_checkpoint_finetune_1_fold_{}.pth".format(n)
             elif args.main == "True":
                 model_name = "model_checkpoint_fold_{}.pth".format(n)
@@ -503,15 +505,15 @@ if args.inference == "True":
         binary_prediction = (y_pred_test > best_threshold).astype(int)
 
     else:
-        valid_idx = valid_indexes[n]
+        valid_idx = valid_indexes[saved_best_cv]
         salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid")
         val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid, 
                                                    batch_size=2, 
                                                    shuffle=True,
                                                    num_workers=1)
-        if args.finetune == 2:
+        if int(args.finetune) == 2:
             model_name = "model_checkpoint_finetune_2_fold_{}.pth".format(saved_best_cv)
-        elif args.finetune == 1:
+        elif int(args.finetune) == 1:
             model_name = "model_checkpoint_finetune_1_fold_{}.pth".format(saved_best_cv)
         elif args.main == "True":
             model_name = "model_checkpoint_fold_{}.pth".format(saved_best_cv)
