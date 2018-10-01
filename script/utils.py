@@ -32,7 +32,7 @@ def FreezeBatchNorm(m):
 
 class saltIDDataset(torch.utils.data.Dataset):
 
-    def __init__(self, path_images, list_images, transforms=False, train="train", tta=True):
+    def __init__(self, path_images, list_images, transforms=False, train="train", tta=True, depth=False):
         self.image_size = 256 #128
         self.resize_to = 202 #101
         self.factor = 64 #32
@@ -41,6 +41,7 @@ class saltIDDataset(torch.utils.data.Dataset):
         self.list_images = list_images
         self.transforms = transforms
         self.tta = tta
+        self.depth = depth
 
     def __len__(self):
         return len(self.list_images)
@@ -76,9 +77,13 @@ class saltIDDataset(torch.utils.data.Dataset):
 
                 image, mask = do_resize2(image, mask, self.resize_to, self.resize_to)
                 image, mask = do_center_pad_to_factor2(image, mask, factor=self.factor)
+                if self.depth == True:
+                    image = add_depth_channels(image)
             else:
                 image, mask = do_resize2(image, mask, self.resize_to, self.resize_to)
                 image, mask = do_center_pad_to_factor2(image, mask, factor=self.factor)
+                if self.depth == True:
+                    image = add_depth_channels(image)
 
             image = np.expand_dims(image, axis=2)
             mask = np.expand_dims(mask, axis=2)
@@ -96,6 +101,8 @@ class saltIDDataset(torch.utils.data.Dataset):
 
             image, mask = do_resize2(image, mask, self.resize_to, self.resize_to)
             image, mask = do_center_pad_to_factor2(image, mask, factor=64)
+            if self.depth == True:
+                image = add_depth_channels(image)
 
             if self.tta == True:            
                 image_flip, mask_flip = do_horizontal_flip2(image, mask)
