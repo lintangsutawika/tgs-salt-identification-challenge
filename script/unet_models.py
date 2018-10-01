@@ -34,7 +34,7 @@ class ConvBn2d(nn.Module):
 
     def forward(self, z):
         x = self.conv(z)
-        # x = self.bn(x)
+        x = self.bn(x)
         return x
 
 class Decoder(nn.Module):
@@ -43,10 +43,43 @@ class Decoder(nn.Module):
         self.conv1 =  ConvBn2d(in_channels,  channels, kernel_size=3, padding=1)
         self.conv2 =  ConvBn2d(channels, out_channels, kernel_size=3, padding=1)
 
-    def forward(self, x ):
+        self.cse = cSEGate(out_channels)
+        self.sse = sSEGate(out_channels)
+
+    def forward(self, x ,e=None):
         x = F.interpolate(x, scale_factor=2, mode='bilinear', align_corners=True)#False
+        if e is not None:
+            x = torch.cat([x,e],1)
+
         x = F.elu(self.conv1(x),inplace=True)
         x = F.elu(self.conv2(x),inplace=True)
+
+        g1 = self.cse(x)
+        g2 = self.sse(x)
+        x = g1*x + g2*x
+
+        return x
+
+class cSEGate(nn.Module):
+    def __init__(self, in_channels):
+        super(cSEGate, self).__init__()
+        self.pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.conv1 = nn.Conv1d(in_channels, in_channels//2, kernel_size=(1,1), stride=1, padding=0, dilation=1, groups=1, bias=True)
+        self.conv2 = nn.Conv1d(in_channels//2, in_channels, kernel_size=(1,1), stride=1, padding=0, dilation=1, groups=1, bias=True)
+    
+    def forward(self, x):
+        x = self.pool(x)
+        x = F.relu(self.conv1(x), inplace=True)
+        x = torch.sigmoid(self.conv2(x))
+        return x
+
+class sSEGate(nn.Module):    
+    def __init__(self, in_channels):
+        super(sSEGate, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, 1, kernel_size=(1,1), stride=1, padding=0, dilation=1, groups=1, bias=True)
+    
+    def forward(self, x):
+        x = torch.sigmoid(self.conv1(x))
         return x
 
 # resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth'
@@ -80,18 +113,19 @@ class UNetResNet34(nn.Module):
             nn.ELU(inplace=True),
             ConvBn2d(512, 256, kernel_size=3, padding=1),
             nn.ELU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2)
         )
 
-        self.decoder5 = Decoder(512+256, 512, 256)
-        self.decoder4 = Decoder(256+256, 512, 256)
-        self.decoder3 = Decoder(128+256, 256,  64)
-        self.decoder2 = Decoder( 64+ 64, 128, 128)
-        self.decoder1 = Decoder(128    , 128,  32)
+        self.decoder5 = Decoder(256+512, 512, 64)#Decoder(512+256, 512, 256)
+        self.decoder4 = Decoder(64 +256, 256, 64)#Decoder(256+256, 512, 256)
+        self.decoder3 = Decoder(64 +128, 128, 64)#Decoder(128+256, 256,  64)
+        self.decoder2 = Decoder(64 + 64,  64, 64)#Decoder( 64+ 64, 128, 128)
+        self.decoder1 = Decoder(64     ,  32, 64)#Decoder(128    , 128,  32)
 
         self.logit    = nn.Sequential(
-            nn.Conv2d(32, 32, kernel_size=3, padding=1),
+            nn.Conv2d(320, 64, kernel_size=3, padding=1),
             nn.ELU(inplace=True),
-            nn.Conv2d(32,  1, kernel_size=1, padding=0),
+            nn.Conv2d(64,  1, kernel_size=1, padding=0),
         )
 
     def forward(self, x):
@@ -100,14 +134,14 @@ class UNetResNet34(nn.Module):
         mean=[0.485, 0.456, 0.406]
         std =[0.229, 0.224, 0.225]
         x = torch.cat([
-            (x-mean[0])/std[0],
-            (x-mean[1])/std[1],
             (x-mean[2])/std[2],
+            (x-mean[1])/std[1],
+            (x-mean[0])/std[0],
         ],1)
 
 
         x = self.conv1(x)
-        x = F.max_pool2d(x, kernel_size=2, stride=2)
+        # x = F.max_pool2d(x, kernel_size=2, stride=2)
 
         e2 = self.encoder2( x)  #; print('e2',e2.size())
         e3 = self.encoder3(e2)  #; print('e3',e3.size())
@@ -116,17 +150,24 @@ class UNetResNet34(nn.Module):
 
 
         #f = F.max_pool2d(e5, kernel_size=2, stride=2 )  #; print(f.size())
-        #f = F.upsample(f, scale_factor=2, mode='bilinear', align_corners=True)#False
+        #f = F.interpolate(f, scale_factor=2, mode='bilinear', align_corners=True)#False
         #f = self.center(f)                       #; print('center',f.size())
         f = self.center(e5)
-         
-        f = self.decoder5(torch.cat([f, e5], 1))  #; print('d5',f.size())
-        f = self.decoder4(torch.cat([f, e4], 1))  #; print('d4',f.size())
-        f = self.decoder3(torch.cat([f, e3], 1))  #; print('d3',f.size())
-        f = self.decoder2(torch.cat([f, e2], 1))  #; print('d2',f.size())
-        f = self.decoder1(f)                      # ; print('d1',f.size())
+        d5 = self.decoder5(f, e5)   #self.decoder5(torch.cat([f, e5], 1))  #; print('d5',f.size())
+        d4 = self.decoder4(d5, e4)  #self.decoder4(torch.cat([d5, e4], 1))  #; print('d4',f.size())
+        d3 = self.decoder3(d4, e3)  #self.decoder3(torch.cat([d4, e3], 1))  #; print('d3',f.size())
+        d2 = self.decoder2(d3, e2)  #self.decoder2(torch.cat([d3, e2], 1))  #; print('d2',f.size())
+        d1 = self.decoder1(d2)                      #self.decoder1(d2)                      # ; print('d1',f.size())
 
-        #f = F.dropout2d(f, p=0.20)
+        f = torch.cat((
+            d1,
+            F.interpolate(d2, scale_factor=2, mode='bilinear', align_corners=False),
+            F.interpolate(d3, scale_factor=4, mode='bilinear', align_corners=False),
+            F.interpolate(d4, scale_factor=8, mode='bilinear', align_corners=False),
+            F.interpolate(d5, scale_factor=16, mode='bilinear', align_corners=False),
+        ),1)
+
+        # f = F.dropout2d(f, p=0.50)
         logit = self.logit(f)                     #; print('logit',logit.size())
         return logit
 
