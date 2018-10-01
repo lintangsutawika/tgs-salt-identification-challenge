@@ -88,15 +88,10 @@ print("Dataset Size after removal: {}".format(len(train_ids)))
 #     SaltLevel,
 #     test_size=0.08, stratify=SaltLevel.salt_class)
 
-model = SaltNet()
-# model = UNet11()
-if torch.cuda.is_available():
-    model.cuda()
-
 #############################################################################################################
 # Main Training
 #############################################################################################################
-if int(args.finetune) >= 0 and args.train == "True":
+if int(args.finetune) == 0 and args.train == "True":
     print("Start Main Training")
     train_indexes = []
     valid_indexes = []
@@ -105,6 +100,10 @@ if int(args.finetune) >= 0 and args.train == "True":
     for cv_fold, (train_idx, valid_idx) in enumerate(sss.split(SaltLevel['train_ids'], SaltLevel['salt_class'])):
         print("Training for fold {}".format(cv_fold))
 
+        model = SaltNet()
+        # model = UNet11()
+        if torch.cuda.is_available():
+            model.cuda()
         model.train()
 
         train_indexes.append(train_idx)
@@ -129,7 +128,7 @@ if int(args.finetune) >= 0 and args.train == "True":
                                                    shuffle=True,
                                                    num_workers=1)
 
-        epoch = 1
+        epoch = 50
         learning_rate = 1e-2
         # optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
         optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
@@ -226,7 +225,7 @@ if int(args.finetune) >= 0 and args.train == "True":
 #############################################################################################################
 #Fine Tuning #1
 #############################################################################################################
-if int(args.finetune) >= 1 and args.train == "True":
+if int(args.finetune) == 1 and args.train == "True":
     print("Start Fine Tuning #1")
     with open('indexes.pkl', 'rb') as f:
         saved_best_cv, train_indexes, valid_indexes= pickle.load(f)
@@ -235,6 +234,11 @@ if int(args.finetune) >= 1 and args.train == "True":
         selected_cv = saved_best_cv
     else:
         selected_cv = int(args.best_cv)
+
+    model = SaltNet()
+    # model = UNet11()
+    if torch.cuda.is_available():
+        model.cuda()
 
     if torch.cuda.is_available():
         model.load_state_dict(torch.load('model_checkpoint_fold_{}.pth'.format(selected_cv)))
@@ -256,7 +260,7 @@ if int(args.finetune) >= 1 and args.train == "True":
                                                shuffle=True,
                                                num_workers=1)
 
-    epoch = 1
+    epoch = 85
     learning_rate = 0.005
     patience = 0
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
@@ -341,7 +345,7 @@ if int(args.finetune) >= 1 and args.train == "True":
 #############################################################################################################
 # Fine Tuning #2
 #############################################################################################################
-if int(args.finetune) >= 2 and args.train == "True":
+if int(args.finetune) == 2 and args.train == "True":
     print("Start Fine Tuning #2")
 
     with open('indexes.pkl', 'rb') as f:
@@ -351,6 +355,11 @@ if int(args.finetune) >= 2 and args.train == "True":
         selected_cv = saved_best_cv
     else:
         selected_cv = int(args.best_cv)
+
+    model = SaltNet()
+    # model = UNet11()
+    if torch.cuda.is_available():
+        model.cuda()
 
     if torch.cuda.is_available():
         model.load_state_dict(torch.load("model_checkpoint_finetune_1_fold_{}.pth".format(selected_cv)))
@@ -371,10 +380,11 @@ if int(args.finetune) >= 2 and args.train == "True":
                                                batch_size=2, 
                                                shuffle=True,
                                                num_workers=1)
-    epoch = 1
+    epoch = 65
     learning_rate = 0.001
     patience = 0
     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
+    #scheduler = CyclicScheduler(base_lr=0.001, max_lr=0.01, step=5., mode='triangular2', gamma=1., scale_fn=None, scale_mode='cycle') ##exp_range ##triangular2
     optimizer.zero_grad()
     best_iou = 0.0
     for e in range(epoch):
@@ -451,7 +461,6 @@ if int(args.finetune) >= 2 and args.train == "True":
                 learning_rate = learning_rate/2
                 optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9, weight_decay=0.0001)
                 optimizer.zero_grad()
-    fold_score.append(best_iou)
 
 #############################################################################################################
 # Inference
@@ -463,14 +472,19 @@ if args.inference == "True":
     test_path_images = os.path.abspath(path_test + "/images/")
     test_ids = next(os.walk(test_path_images))[2]
     salt_ID_dataset_test = saltIDDataset(path_test, test_ids, transforms=False, train="test")
-    test_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_test, 
-                                               batch_size=8, 
+    test_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_test,
+                                               batch_size=2,
                                                shuffle=False,
                                                num_workers=1)
 
+    model = SaltNet()
+    # model = UNet11()
+    if torch.cuda.is_available():
+        model.cuda()
+
     with open('indexes.pkl', 'rb') as f:
         saved_best_cv, train_indexes, valid_indexes= pickle.load(f)
-    
+
     if args.ensemble == "True":
         for n in range(4):
             valid_idx = valid_indexes[n]
