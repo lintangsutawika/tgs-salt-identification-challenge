@@ -116,15 +116,15 @@ if int(args.finetune) == 0 and args.train == "True":
         # plt.savefig('salt_class_{}.png'.format(cv_fold), dpi=400)
         # plt.close()
 
-        salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train")
+        salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train", depth=True)
         train_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_train, 
                                                    batch_size=train_batch, 
                                                    shuffle=True,
                                                    num_workers=1)
 
-        salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid")
+        salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid", depth=True)
         val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid, 
-                                                   batch_size=2, 
+                                                   batch_size=2,
                                                    shuffle=True,
                                                    num_workers=1)
 
@@ -144,7 +144,7 @@ if int(args.finetune) == 0 and args.train == "True":
 
             model.train()
             with tqdm(train_loader) as pbar:
-                for images, masks in pbar: 
+                for images, masks in pbar:
                     masks = masks.cuda()
                     y_pred = model(Variable(images).cuda())
 
@@ -177,16 +177,16 @@ if int(args.finetune) == 0 and args.train == "True":
                         image_ori, image_rev = images
                         mask_ori, mask_rev = masks
                         if torch.cuda.is_available():
-                            image_ori, image_rev, mask_ori, mask_rev = image_ori.cuda(), image_rev.cuda(), mask_ori.cuda(), mask_rev.cuda()
+                            mask_ori, mask_rev = mask_ori.cuda(), mask_rev.cuda()
 
-                        y_pred_rev = model(Variable(image_rev)).flip(3)
-                        y_pred_ori = model(Variable(image_ori))
+                        y_pred_rev = model(Variable(image_rev).cuda()).flip(3)
+                        y_pred_ori = model(Variable(image_ori).cuda())
                         y_pred = (y_pred_ori+ y_pred_rev)/2
                         masks = mask_ori
                     else:
                         if torch.cuda.is_available():
-                            images, masks = images.cuda(), masks.cuda()
-                        y_pred = model(Variable(images))
+                            masks = masks.cuda()
+                        y_pred = model(Variable(images).cuda())
 
                     prob = torch.sigmoid(y_pred)[:,:,right_pad:-left_pad,right_pad:-left_pad]
                     truth = masks[:,:,right_pad:-left_pad,right_pad:-left_pad]
@@ -248,13 +248,13 @@ if int(args.finetune) == 1 and args.train == "True":
     train_idx = train_indexes[selected_cv]
     valid_idx = valid_indexes[selected_cv]
 
-    salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train")
+    salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train", depth=True)
     train_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_train, 
                                                batch_size=train_batch, 
                                                shuffle=True,
                                                num_workers=1)
 
-    salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid")
+    salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid", depth=True)
     val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid, 
                                                batch_size=2, 
                                                shuffle=True,
@@ -369,13 +369,13 @@ if int(args.finetune) == 2 and args.train == "True":
     train_idx = train_indexes[selected_cv]
     valid_idx = valid_indexes[selected_cv]
 
-    salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train")
+    salt_ID_dataset_train = saltIDDataset(path_train, SaltLevel.train_ids.iloc[train_idx].values, transforms=True, train="train", depth=True)
     train_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_train, 
                                                batch_size=train_batch, 
                                                shuffle=True,
                                                num_workers=1)
 
-    salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid")
+    salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid", depth=True)
     val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid, 
                                                batch_size=2, 
                                                shuffle=True,
@@ -471,7 +471,7 @@ if args.inference == "True":
     path_test = '../input/test'
     test_path_images = os.path.abspath(path_test + "/images/")
     test_ids = next(os.walk(test_path_images))[2]
-    salt_ID_dataset_test = saltIDDataset(path_test, test_ids, transforms=False, train="test")
+    salt_ID_dataset_test = saltIDDataset(path_test, test_ids, transforms=False, train="test", depth=True)
     test_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_test,
                                                batch_size=2,
                                                shuffle=False,
@@ -488,7 +488,7 @@ if args.inference == "True":
     if args.ensemble == "True":
         for n in range(4):
             valid_idx = valid_indexes[n]
-            salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid")
+            salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid", depth=True)
             val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid, 
                                                        batch_size=2, 
                                                        shuffle=True,
@@ -518,7 +518,7 @@ if args.inference == "True":
 
     else:
         valid_idx = valid_indexes[saved_best_cv]
-        salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid")
+        salt_ID_dataset_valid = saltIDDataset(path_train, SaltLevel.train_ids.iloc[valid_idx].values, transforms=False, train="valid", depth=True)
         val_loader = torch.utils.data.DataLoader(dataset=salt_ID_dataset_valid, 
                                                    batch_size=2, 
                                                    shuffle=True,

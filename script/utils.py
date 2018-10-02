@@ -77,16 +77,16 @@ class saltIDDataset(torch.utils.data.Dataset):
 
                 image, mask = do_resize2(image, mask, self.resize_to, self.resize_to)
                 image, mask = do_center_pad_to_factor2(image, mask, factor=self.factor)
-                if self.depth == True:
-                    image = add_depth_channels(image)
+        
             else:
                 image, mask = do_resize2(image, mask, self.resize_to, self.resize_to)
                 image, mask = do_center_pad_to_factor2(image, mask, factor=self.factor)
-                if self.depth == True:
-                    image = add_depth_channels(image)
-
+            
             image = np.expand_dims(image, axis=2)
             mask = np.expand_dims(mask, axis=2)
+
+            if self.depth == True:
+                image = add_depth_channels(image)
             
             image = transformTensor(image).float()
             mask = transformTensor(mask).float()
@@ -101,19 +101,23 @@ class saltIDDataset(torch.utils.data.Dataset):
 
             image, mask = do_resize2(image, mask, self.resize_to, self.resize_to)
             image, mask = do_center_pad_to_factor2(image, mask, factor=64)
-            if self.depth == True:
-                image = add_depth_channels(image)
 
             if self.tta == True:            
                 image_flip, mask_flip = do_horizontal_flip2(image, mask)
                 image_flip = np.expand_dims(image_flip, axis=2)
-                image_flip = transformTensor(image_flip).float()
-
                 mask_flip = np.expand_dims(mask_flip, axis=2)
+
+                if self.depth == True:
+                    image_flip = add_depth_channels(image_flip)
+
+                image_flip = transformTensor(image_flip).float()
                 mask_flip = transformTensor(mask_flip).float()
             
             image = np.expand_dims(image, axis=2)
             mask = np.expand_dims(mask, axis=2)
+
+            if self.depth == True:
+                image = add_depth_channels(image)
 
             image = transformTensor(image).float()
             mask = transformTensor(mask).float()
